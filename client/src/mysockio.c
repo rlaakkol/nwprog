@@ -33,10 +33,10 @@ readn(int fd, void *vptr, size_t n)
     return(n - nleft);		/* return >= 0 */
 }
 
-void
+size_t
 readn_buf(int fd, void *dest, size_t n)
 {
-	size_t 	readlen, temp;
+	size_t 	readlen, temp, rem;
 
 	if (buffered >= n) {
 		memcpy(dest, buf, n);
@@ -45,7 +45,17 @@ readn_buf(int fd, void *dest, size_t n)
 	}
 	temp = buffered;
 	memcpy(dest, buf, buffered);
+	dest += buffered + 1;
+	rem = n - buffered;
 	readlen = readn(fd, buf, BUF_SIZE);
-	
+	/* TODO: Error handling */
+	memcpy(dest, buf, readlen);
+	if (readlen < rem) {
+		buf_init();
+		return buffered + readlen;
+	}
+	buffered -= rem;
+	readptr = buf + rem + 1;
 
+	return n;
 }
