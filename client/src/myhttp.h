@@ -1,3 +1,5 @@
+#define MAX_FIELDLEN 50
+
 
 typedef enum {
 	OK,
@@ -23,6 +25,7 @@ typedef struct {
 	char			uri[MAX_FIELDLEN];
 	char			host[MAX_FIELDLEN];
 	char			iam[MAX_FIELDLEN];
+	unsigned long	payload_len;
 	int				close;
 } http_request;
 
@@ -30,4 +33,7 @@ void
 parse_response(int sock, http_response *res);
 
 void
-generate_request()
+generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, http_request *req);
+
+void
+generate_request_header(http_request *request, const char *payload_filename, char *buf)
