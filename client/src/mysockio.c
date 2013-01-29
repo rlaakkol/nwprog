@@ -49,6 +49,9 @@ readn_buf(int fd, void *dest, size_t n)
 	rem = n - buffered;
 	readlen = readn(fd, buf, BUF_SIZE);
 	/* TODO: Error handling */
+	if (readlen < 0) {
+		return -1;
+	}
 	memcpy(dest, buf, readlen);
 	if (readlen < rem) {
 		buf_init();
@@ -59,3 +62,4 @@ readn_buf(int fd, void *dest, size_t n)
 
 	return n;
 }
+
