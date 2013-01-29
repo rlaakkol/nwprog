@@ -1,6 +1,7 @@
 #include "myhttp.h"
 
 #define HEADER_BUF 1000
+#define CRLF "\r\n"
 
 void
 generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, http_request *req)
@@ -24,14 +25,40 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 
 }
 
+int
+parse_response_startline(char *line, http_response *res)
+{
+	
+}
+
 void
 parse_response(int sock, http_response *res)
 {
-	char			*buf;
+	char			line[HEADER_BUF];
 	unsigned int	n;
+	int				first, empty;
 
-	n = 0;
-	buf = malloc(HEADER_BUF);
+	res->fd = sock;
+	first = 1;
+	empty = 0;
+	
+	while(1) {
+		n = 0;
+		do {
+			readn_buf(sock, line + n, 1);
+			n++;
+		} while ( n < 2 || strncmp(CRLF, line[n-2], 2) != 0)
+		line[n] = '\0';
+		if (strncmp(CRLF, line, HEADER_BUF) == 0) {
+			if (empty) break;
+			else empty = 1;
+		}
+		if (first) {
+			parse_response_startline(line, res);
+			first = 0;
+		}
+		else parse_headerline(line, res);
+	}
 	
 
 }

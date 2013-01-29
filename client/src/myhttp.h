@@ -15,6 +15,7 @@ typedef enum {
 typedef struct {
 	int				fd;
 	response_type	type;
+	char			content_type[MAX_FIELDLEN];
 	unsigned long	payload_len;
 	unsigned long	read_len;
 	char			*payload;
