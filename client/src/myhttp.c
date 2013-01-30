@@ -28,7 +28,48 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 int
 parse_response_startline(char *line, http_response *res)
 {
-	
+	if (strcasecmp(line, HTTP_OK) == 0) {
+		res->type = OK;
+		return 0;
+	} else if (strcasecmp(line, HTTP_NFOUND) == 0) {
+		res->type = NFOUND;
+		return 0;
+	} else if (strcasecmp(line, HTTP_CREATED) == 0) {
+		res->type = CREATED;
+		return 0;
+	}
+	return -1;
+}
+
+int
+parse_response_headerline(char *line, http_response *res)
+{
+	size_t	len;
+	char	*ptr1, *ptr2;
+	len = 0;
+	if (strncmp(line, "\r\n", 2) == 0) return 0;	// End of header
+	while(line[len++] != '\n');
+	if ((ptr1 = strchr(line, ':')) == NULL) {
+//		syslog(LOG_INFO, "Malformed header");
+		return -1;
+	}
+	ptr2 = ptr1 + 1;
+	while (*ptr2 == ' ') ptr2++;
+	if (strncasecmp(line, "content-length", ptr1 - line) == 0) {
+		if ((res->payload_len = atoi(ptr2)) == 0) {
+//			syslog(LOG_INFO, "Malformed header: %s: %s", line, ptr2);
+			return -1;
+		}
+//	} else if (strncasecmp(line, "host", ptr1 - line) == 0) {
+//		strncpy(res->host, ptr1, line + len - ptr2);
+//		res->host[line + len - ptr2 - 2] = '\0';
+//	} else if (strncasecmp(line, "connection", ptr1 -line) == 0) {
+//		if (strncasecmp(ptr2, "close\r", line + len - ptr2)) res->close = 1;
+//	} else if (strncasecmp(line, "iam", ptr1 - line) == 0) {
+//		strncpy(res->iam, ptr1, line + len - ptr2);
+//		res->iam[line + len - ptr2 - 2] = '\0';
+	}
+	return 0;
 }
 
 void

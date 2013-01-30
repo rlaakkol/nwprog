@@ -17,8 +17,8 @@ typedef struct {
 	response_type	type;
 	char			content_type[MAX_FIELDLEN];
 	unsigned long	payload_len;
-	unsigned long	read_len;
-	char			*payload;
+//	unsigned long	read_len;
+// 	char			*payload;
 } http_response;
 
 typedef struct {
