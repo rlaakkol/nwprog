@@ -1,5 +1,7 @@
 #define MAX_FIELDLEN 50
 
+#define HEADER_BUF 1000
+#define CRLF "\r\n"
 
 typedef enum {
 	OK,
