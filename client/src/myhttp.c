@@ -8,7 +8,9 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 
 	req->type = type;
 	req->uri[0] = '\0';
+	strncat(req->uri, "http://", 7);
 	strncat(req->uri, host, MAX_FIELDLEN-1);
+	strncat(req->uri, "/", 1);
 	strncat(req->uri, uri, MAX_FIELDLEN-strlen(req->uri)-1);
 	req->iam[0] = '\0';
 	strncat(req->iam, iam, MAX_FIELDLEN-1);
@@ -91,5 +93,34 @@ parse_response(int sock, http_response *res)
 		} else if (parse_headerline(line, res) == 1) break;
 	}
 	
+
+}
+
+int
+write_response_payload(http_response *res, FILE *outfile)
+{
+	size_t	remaining, next;
+	int		rbytes, wbytes;
+	char	buf[MAX_BUFLEN];
+
+	remaining = res->payload_len;
+
+	while (remaining) {
+		next = remaining < MAX_BUFLEN ? remaining : MAX_BUFLEN;
+		rbytes = readn_buf(res, buf, next);
+		if (rbytes < 1) {
+			return rbytes;
+		}
+		if ((wbytes = fwrite(buf, 1, rbytes, outfile)) < rbytes) {
+			return -1;
+		}
+		remaining -= rbytes;
+	}
+	return 0;
+}
+
+int
+send_request(int fd, http_request req, FILE *payload)
+{
 
 }

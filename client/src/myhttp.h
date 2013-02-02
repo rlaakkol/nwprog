@@ -39,4 +39,11 @@ void
 generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, http_request *req);
 
 void
-generate_request_header(http_request *request, const char *payload_filename, char *buf)
+generate_request_header(http_request *request, const char *payload_filename, char *buf);
+
+int
+store_response_payload(FILE* outfile, http_response *res);
+
+int
+send_request(int fd, http_request req);
+
