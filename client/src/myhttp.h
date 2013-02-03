@@ -1,7 +1,17 @@
-#define MAX_FIELDLEN 50
+#include <stdio.h>
 
-#define HEADER_BUF 1000
+#define MAX_FIELDLEN 64
+
+#define HEADER_BUF 1024
 #define CRLF "\r\n"
+
+#define STARTLINEFMT "%s %s HTTP/1.1\r\n"
+#define SHEADERFMT "%s: %s\r\n"
+#define IHEADERFMT "%s: %d\r\n"
+
+#define HTTP_OK "HTTP/1.1 200 OK\r\n"
+#define HTTP_NFOUND "HTTP/1.1 404 Not Found\r\n"
+#define HTTP_CREATED "HTTP/1.1 201 Created\r\n"
 
 typedef enum {
 	OK,
@@ -19,8 +29,6 @@ typedef struct {
 	response_type	type;
 	char			content_type[MAX_FIELDLEN];
 	unsigned long	payload_len;
-//	unsigned long	read_len;
-// 	char			*payload;
 } http_response;
 
 typedef struct {
@@ -45,5 +53,4 @@ int
 store_response_payload(FILE* outfile, http_response *res);
 
 int
-send_request(int fd, http_request req);
-
+send_request(int fd, http_request *req, FILE *payload);

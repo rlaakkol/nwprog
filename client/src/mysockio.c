@@ -1,5 +1,6 @@
 #include "mysockio.h"
 
+
 char	buf[BUF_SIZE];
 char 	*readptr;
 size_t 	buffered;
@@ -11,7 +12,7 @@ buf_init(void)
 	readptr = buf;
 }
 
-void
+int
 readn(int fd, void *vptr, size_t n)
 {
 	size_t	nleft;
@@ -37,7 +38,7 @@ readn(int fd, void *vptr, size_t n)
 	return(n - nleft);		/* return >= 0 */
 }
 
-size_t
+int
 readn_buf(int fd, void *dest, size_t n)
 {
 	size_t 	readlen, temp, rem;

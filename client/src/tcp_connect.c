@@ -3,7 +3,7 @@
  *This code is (almost) entirely copied from the tcp_connect.c -example of the course lectures!
  */
 
-#include "npbcli.h"
+#include "tcp_connect.h"
 
 int tcp_connect(const char *host, const char *serv)
 {
