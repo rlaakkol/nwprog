@@ -7,7 +7,7 @@
 
 #define STARTLINEFMT "%s %s HTTP/1.1\r\n"
 #define SHEADERFMT "%s: %s\r\n"
-#define IHEADERFMT "%s: %d\r\n"
+#define IHEADERFMT "%s: %ld\r\n"
 
 #define HTTP_OK "HTTP/1.1 200 OK\r\n"
 #define HTTP_NFOUND "HTTP/1.1 404 Not Found\r\n"

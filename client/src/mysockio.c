@@ -1,5 +1,8 @@
-#include "mysockio.h"
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
 
+#include "mysockio.h"
 
 char	buf[BUF_SIZE];
 char 	*readptr;
@@ -41,16 +44,16 @@ readn(int fd, void *vptr, size_t n)
 int
 readn_buf(int fd, void *dest, size_t n)
 {
-	size_t 	readlen, temp, rem;
+	size_t 	rem;
+	int 	readlen;
 
 	if (buffered >= n) {
 		memcpy(dest, buf, n);
 		buffered -= n;
 		return n;
 	}
-	temp = buffered;
 	memcpy(dest, buf, buffered);
-	dest += buffered;
+	dest = (char *)dest + buffered;
 	rem = n - buffered;
 	readlen = readn(fd, buf, BUF_SIZE);
 	/* TODO: Error handling */
@@ -58,7 +61,7 @@ readn_buf(int fd, void *dest, size_t n)
 		return -1;
 	}
 	memcpy(dest, buf, readlen);
-	if (readlen < rem) {
+	if ((unsigned int)readlen < rem) {
 		buf_init();
 		return buffered + readlen;
 	}
@@ -95,13 +98,13 @@ writen(int fd, const void *vptr, size_t n)
 int
 write_file(int fd, FILE *lfile, size_t n)
 {
-	char 	buf[WRITEBUF];
+	char 	buf[BUF_SIZE];
 	size_t 	nleft, nread;
 
 	nleft = n;
 
 	while (nleft > 0) {
-		if (nread = fread(buf, sizeof(char), WRITEBUF, lfile) == 0) {
+		if ((nread = fread(buf, sizeof(char), BUF_SIZE, lfile)) == 0) {
 			break;
 		}
 

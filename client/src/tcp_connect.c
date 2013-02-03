@@ -2,6 +2,14 @@
  *DISCLAIMER!
  *This code is (almost) entirely copied from the tcp_connect.c -example of the course lectures!
  */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <strings.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
 
 #include "tcp_connect.h"
 
@@ -9,8 +17,7 @@ int tcp_connect(const char *host, const char *serv)
 {
 	int				sockfd, n;
 	struct addrinfo	hints, *res, *ressave;
-	char outbuf[80];
-	size_t out_size = sizeof(outbuf);
+/*	char outbuf[80]; */
 
 	bzero(&hints, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
@@ -38,11 +45,11 @@ int tcp_connect(const char *host, const char *serv)
 	if (res == NULL) {	/* errno set from final connect() */
 		fprintf(stderr, "tcp_connect error for %s, %s\n", host, serv);
 		sockfd = -1;
-	} else {
+	} /* else {
 		struct sockaddr_in *sin = (struct sockaddr_in *)res->ai_addr;
 		const char *ret = inet_ntop(res->ai_family, &(sin->sin_addr),
 				outbuf, sizeof(outbuf));
-	}
+	} */
 
 	freeaddrinfo(ressave);
 
