@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
 
 
 #include "tcp_connect.h"
@@ -24,7 +26,7 @@ int tcp_connect(const char *host, const char *serv)
 	hints.ai_socktype = SOCK_STREAM;
 
 	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0) {
-		fprintf(stderr, "tcp_connect error for %s, %s: %s\n",
+		fprintf(stderr, "tcp_connect error for %s, port %s: %s\n",
 				host, serv, gai_strerror(n));
 		return -1;
 	}
@@ -43,7 +45,7 @@ int tcp_connect(const char *host, const char *serv)
 	} while ( (res = res->ai_next) != NULL);
 
 	if (res == NULL) {	/* errno set from final connect() */
-		fprintf(stderr, "tcp_connect error for %s, %s\n", host, serv);
+		fprintf(stderr, "tcp_connect error for %s, port %s: %s\n", host, serv, strerror(errno));
 		sockfd = -1;
 	} /* else {
 		struct sockaddr_in *sin = (struct sockaddr_in *)res->ai_addr;

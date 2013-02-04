@@ -8,12 +8,7 @@
 char 	*readptr;
 size_t 	buffered; */
 
-void
-buf_init(void)
-{
-/*	buffered = 0;
-	readptr = buf;*/
-}
+
 
 int
 readn(int fd, void *vptr, size_t n)
@@ -73,11 +68,6 @@ readn_buf(int fd, void *dest, size_t n)
 
 	return n;
 }*/
-int
-readn_buf(int fd, void *dest, size_t n)
-{
-	return readn(fd, dest, n);
-}
 
 
 ssize_t                         /* Write "n" bytes to a descriptor. */

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 
 #include "myhttp.h"
 #include "tcp_connect.h"
@@ -11,7 +12,7 @@ int main(int argc, char **argv)
 {
 	int c, mode, sockfd;
 	char *host, *lfilename, *rfilename, *service;
-	FILE *lfile;
+	FILE *lfile = NULL;
 	http_request 	*req;
 	http_response 	*res;
 	if (argc != 9) {
@@ -45,96 +46,78 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-	if (optind < argc) {
-		host = malloc((strlen(argv[optind]) + 1)*sizeof(char));
-		strcpy(host, argv[optind]);
-	} else {
-		fprintf(stderr, "usage: npbcli -d/-u -l localfile -r -p port/service remotefile host\n");
-		free(lfilename);
-		free(rfilename);
-		free(service);
-		free(req);
-		free(res);
-		return EXIT_FAILURE;
-	}
+	do {
+		if (optind < argc) {
+			host = malloc((strlen(argv[optind]) + 1)*sizeof(char));
+			strcpy(host, argv[optind]);
+		} else {
+			fprintf(stderr, "usage: npbcli -d/-u -l localfile -r -p port/service remotefile host\n");
+			break;
+		}
 
-	if ((sockfd = tcp_connect(host, service)) == -1) {
-		fprintf(stderr, "error connecting\n");
+		if ((sockfd = tcp_connect(host, service)) == -1) {
+			break;
+		}
+
+		if (mode == 'd') {
+			if ((lfile = fopen(lfilename, "w")) == NULL) {
+				fprintf(stderr, "Error opening file %s for writing: %s\n", lfilename, strerror(errno));
+				break;
+			}
+
+			generate_request(GET, rfilename, host, "rlaakkol", NULL, 0, NULL, req);
+
+			if (send_request(sockfd, req, NULL) < 0) break;
+
+			if (parse_response(sockfd, res) < 0) break;
+			if (res->type == OK) {
+				printf("Writing response to file\n");
+				if (store_response_payload(lfile, res) < 0) break;
+			} else {
+				fprintf(stderr, "Non-OK response code: %d!\n", restype_to_int(res));
+				if (res->payload_len > 0) {
+					fprintf(stderr, "Error message payload:\n---\n");
+			
+					store_response_payload(stderr, res);
+				}
+				break;
+			}
+
+		} else {
+			if ((lfile = fopen(lfilename, "r")) == NULL) {
+				fprintf(stderr, "Error opening file %s for reading: %s\n", lfilename, strerror(errno));
+				break;
+			}
+			generate_request(PUT, rfilename, host, "rlaakkol", lfilename, 0, "text/plain", req);
+			
+			if (send_request(sockfd, req, lfile) < 0) break;
+
+			if (parse_response(sockfd, res) < 0) break;
+
+			if (res->type == CREATED || res->type == OK) {
+				fprintf(stdout, "Successfully created remote file\n");
+			} else {
+				fprintf(stderr, "Error creating remote file! Code %d\n", restype_to_int(res));
+				if (res->payload_len > 0) {
+					 fprintf(stderr, "Error message payload:\n---\n");
+					store_response_payload(stderr, res);
+				}
+				break;
+			}
+
+		}
+
 		free(host);
 		free(lfilename);
 		free(rfilename);
 		free(service);
 		free(req);
 		free(res);
-		return EXIT_FAILURE;
-	}
-	buf_init();
+		close(sockfd);
+		fclose(lfile);
 
-	if (mode == 'd') {
-		if ((lfile = fopen(lfilename, "w")) == NULL) {
-			fprintf(stderr, "Error opening file %s for writing.\n", lfilename);
-			free(host);
-			free(lfilename);
-			free(rfilename);
-			free(service);
-			free(req);
-			free(res);
-			close(sockfd);
-			return EXIT_FAILURE;
-		}
-		
-		generate_request(GET, rfilename, host, "rlaakkol", NULL, 0, req);
-		
-		send_request(sockfd, req, NULL);
-		
-		parse_response(sockfd, res);
-		if (res->type == OK) {
-			printf("Writing response to file\n");
-			store_response_payload(lfile, res);
-		} else {
-			fprintf(stderr, "Remote file not found\n");
-			free(host);
-			free(lfilename);
-			free(rfilename);
-			free(service);
-			free(req);
-			free(res);
-			close(sockfd);
-			fclose(lfile);
-			return EXIT_FAILURE;
-		}
-
-	} else {
-		if ((lfile = fopen(lfilename, "r")) == NULL) {
-			fprintf(stderr, "Error opening file %s for reading.\n", lfilename);
-			free(host);
-			free(lfilename);
-			free(rfilename);
-			free(service);
-			free(req);
-			free(res);
-			close(sockfd);
-			return EXIT_FAILURE;
-		}
-		generate_request(PUT, rfilename, host, "rlaakkol", lfilename, 0, req);
-		send_request(sockfd, req, lfile);
-		parse_response(sockfd, res);
-		if (res->type == CREATED) {
-			fprintf(stdout, "Successfully created remote file\n");
-		} else {
-			fprintf(stderr, "Error creating remote file\n");
-			free(host);
-			free(lfilename);
-			free(rfilename);
-			free(service);
-			free(req);
-			free(res);
-			close(sockfd);
-			fclose(lfile);
-			return EXIT_FAILURE;
-		}
-
-	}
+		return EXIT_SUCCESS;
+	} while (0);
 
 	free(host);
 	free(lfilename);
@@ -142,9 +125,8 @@ int main(int argc, char **argv)
 	free(service);
 	free(req);
 	free(res);
-	close(sockfd);
-	fclose(lfile);
-
-	return EXIT_SUCCESS;
+	if (sockfd != -1) close(sockfd);
+	if (lfile != NULL) fclose(lfile);
+	return EXIT_FAILURE;
 }
 

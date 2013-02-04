@@ -9,15 +9,12 @@
 #define SHEADERFMT "%s: %s\r\n"
 #define IHEADERFMT "%s: %ld\r\n"
 
-#define HTTP_OK "HTTP/1.1 200 OK\r\n"
-#define HTTP_NFOUND "HTTP/1.1 404 Not Found\r\n"
-#define HTTP_CREATED "HTTP/1.1 201 Created\r\n"
+#define OK 200
+#define NFOUND 404
+#define CREATED 201
+#define OTHER -1
 
-typedef enum {
-	OK,
-	CREATED,
-	NFOUND
-} response_type;
+typedef int response_type;
 
 typedef enum {
 	GET,
@@ -37,14 +34,18 @@ typedef struct {
 	char			host[MAX_FIELDLEN];
 	char			iam[MAX_FIELDLEN];
 	unsigned long	payload_len;
+	char 			content_type[MAX_FIELDLEN];
 	int				close;
 } http_request;
 
-void
+int
+restype_to_int(http_response *res);
+
+int
 parse_response(int sock, http_response *res);
 
 void
-generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, http_request *req);
+generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req);
 
 void
 generate_request_header(http_request *request, const char *payload_filename, char *buf);

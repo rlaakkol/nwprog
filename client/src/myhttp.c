@@ -1,12 +1,19 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "myhttp.h"
 #include "mysockio.h"
 
+int
+restype_to_int(http_response *res)
+{
+	return res->type;
+}
+
 void
-generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, http_request *req)
+generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req)
 {
 	struct stat 	file_info;
 
@@ -23,6 +30,10 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 	req->iam[0] = '\0';
 	strncat(req->iam, iam, MAX_FIELDLEN-1);
 	req->close = close;
+	req->content_type[0] = '\0';
+	if (req->type == PUT && req->content_type != NULL) {
+		strncat(req->content_type, content_type, MAX_FIELDLEN-1);
+	}
 
 	if (payload_filename != NULL) {
 		stat(payload_filename, &file_info);
@@ -36,17 +47,17 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 int
 parse_response_startline(char *line, http_response *res)
 {
-	int 	code, rest;
+	int 	code;
 	char 	http_ver[10];
 
-	sscanf(line, "%s %d %n", http_ver, &code, &rest);
-	if (code == 200) {
-		res->type = OK;
-	} else if (code == 404) {
-		res->type = NFOUND;
-	} else if (code == 201) {
-		res->type = CREATED;
-	} else return -1;
+	if (sscanf(line, "%s %d", http_ver, &code) != 2) {
+		fprintf(stderr, "Malformed response startline!\n");
+		res->type = OTHER;
+		return -1;
+	}
+
+	res->type = code;
+
 	return 0;
 }
 
@@ -54,39 +65,36 @@ int
 parse_response_headerline(char *line, http_response *res)
 {
 /*	size_t	len; */
-	char	*ptr1, *ptr2;
+	char		field[MAX_FIELDLEN/2], value[MAX_FIELDLEN/2];
+	long int 	len;
+
+
 
 	if (strncmp(line, "\r\n", 2) == 0) return 1;	/* End of header */
 /*	len = strlen(line); */
-	if ((ptr1 = strchr(line, ':')) == NULL) {
-/*		syslog(LOG_INFO, "Malformed header");*/
-		return -1;
-	}
-	ptr2 = ptr1 + 1;
-	while (*ptr2 == ' ') ptr2++;
-	if (strncasecmp(line, "content-length", ptr1 - line) == 0) {
-		if ((res->payload_len = atoi(ptr2)) == 0) {
+	sscanf(line, "%[^:]:%s", field, value);
+
+
+	if (strcasecmp(field, "content-length") == 0) {
+		if ((len = atol(value)) < 0) {
 /*			syslog(LOG_INFO, "Malformed header: %s: %s", line, ptr2);*/
+			fprintf(stderr, "Received malformed \"%s\" header line:\n%s", field, line);
 			return -1;
-		}
-/*	} else if (strncasecmp(line, "host", ptr1 - line) == 0) { 
-//		strncpy(res->host, ptr1, line + len - ptr2);
-//		res->host[line + len - ptr2 - 2] = '\0';
-//	} else if (strncasecmp(line, "connection", ptr1 -line) == 0) {
-//		if (strncasecmp(ptr2, "close\r", line + len - ptr2)) res->close = 1;
-//	} else if (strncasecmp(line, "iam", ptr1 - line) == 0) {
-//		strncpy(res->iam, ptr1, line + len - ptr2);
-//		res->iam[line + len - ptr2 - 2] = '\0';*/
+		} else res->payload_len = len;
+	} else if (strcasecmp(field, "content-type") == 0) {
+		strcpy(res->content_type, value);
 	}
+
+
 	return 0;
 }
 
-void
+int
 parse_response(int sock, http_response *res)
 {
 	char			line[HEADER_BUF];
 	unsigned int	n;
-	int				first;
+	int				first, ret;
 
 	printf("Parsing response\n");
 	res->fd = sock;
@@ -95,17 +103,21 @@ parse_response(int sock, http_response *res)
 	while(1) {
 		n = 0;
 		do {
-			readn_buf(sock, line + n, 1);
+			if (readn(sock, line + n, 1) < 0) {
+				fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
+				return EXIT_FAILURE;
+			}
 			n++;
-		} while ( n < 2 || strncmp(CRLF, line + n - 2, 2) != 0);
+		} while (n < HEADER_BUF-1 && (n < 2 || strncmp(CRLF, line + n - 2, 2) != 0));
 			line[n] = '\0';
 		if (first) {
-			parse_response_startline(line, res);
+			if (parse_response_startline(line, res) < 0) return EXIT_FAILURE;
 			first = 0;
-		} else if (parse_response_headerline(line, res) == 1) break;
+		} else if ((ret = parse_response_headerline(line, res)) == 1) break;
+		else if (ret < 0) return EXIT_FAILURE;
 	}
-	
 
+	return EXIT_SUCCESS;
 }
 
 int
@@ -119,16 +131,17 @@ store_response_payload(FILE *outfile, http_response *res)
 
 	while (remaining) {
 		next = remaining < BUF_SIZE ? remaining : BUF_SIZE;
-		rbytes = readn_buf(res->fd, buf, next);
+		rbytes = readn(res->fd, buf, next);
 		if (rbytes < 1) {
 			return rbytes;
 		}
 		if ((wbytes = fwrite(buf, 1, rbytes, outfile)) < rbytes) {
-			return -1;
+			fprintf(stderr, "Error writing local file: %s\n", strerror(errno));
+			return EXIT_FAILURE;
 		}
 		remaining -= rbytes;
 	}
-	return 0;
+	return EXIT_SUCCESS;
 }
 
 int
@@ -154,16 +167,25 @@ send_request(int fd, http_request *req, FILE *payload)
 	if (req->payload_len > 0) {
 		sprintf(header + strlen(header), IHEADERFMT, "Content-Length", req->payload_len);
 	}
+
+	if (strlen(req->content_type) > 0) {
+		sprintf(header + strlen(header), SHEADERFMT, "Content-Type", req->content_type);
+	}
+
 	sprintf(header + strlen(header), CRLF);
+
 
 	printf("Request header:\n%s", header);
 
 	writen(fd, header, strlen(header));
 	if (req->payload_len > 0) {
-		write_file(fd, payload, req->payload_len);
+		if (write_file(fd, payload, req->payload_len) > 0) {
+			fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
+			return EXIT_FAILURE;
+		}
 	}
 
 	free(rtype);
-	return 0;
+	return EXIT_SUCCESS;
 
 }
