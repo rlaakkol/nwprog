@@ -17,7 +17,7 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 {
 	struct stat 	file_info;
 
-	printf("Generating %s-request\n", type == GET ? "GET" : "PUT");
+	fprintf(stdout, "Generating %s-request\n", type == GET ? "GET" : "PUT");
 
 	req->type = type;
 	req->uri[0] = '\0';
@@ -149,7 +149,7 @@ send_request(int fd, http_request *req, FILE *payload)
 {
 	char 	header[HEADER_BUF], *rtype;
 
-	printf("Sending request\n");
+	fprintf(stdout, "Sending request\n");
 
 	rtype = malloc(4);
 
@@ -175,7 +175,7 @@ send_request(int fd, http_request *req, FILE *payload)
 	sprintf(header + strlen(header), CRLF);
 
 
-	printf("Request header:\n%s", header);
+	fprintf(stdout, "Request header:\n---\n%s---\n", header);
 
 	writen(fd, header, strlen(header));
 	if (req->payload_len > 0) {
