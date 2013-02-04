@@ -3,6 +3,7 @@
 *.swp
 *~
 /*/test/
+/client/hdcli
 *.txt
 !doc.txt
 !diary.txt
