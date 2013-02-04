@@ -4,15 +4,15 @@
 
 #include "mysockio.h"
 
-char	buf[BUF_SIZE];
+/*char	buf[BUF_SIZE];
 char 	*readptr;
-size_t 	buffered;
+size_t 	buffered; */
 
 void
 buf_init(void)
 {
-	buffered = 0;
-	readptr = buf;
+/*	buffered = 0;
+	readptr = buf;*/
 }
 
 int
@@ -41,35 +41,44 @@ readn(int fd, void *vptr, size_t n)
 	return(n - nleft);		/* return >= 0 */
 }
 
-int
+/*int
 readn_buf(int fd, void *dest, size_t n)
 {
 	size_t 	rem;
 	int 	readlen;
 
 	if (buffered >= n) {
-		memcpy(dest, buf, n);
+		memcpy(dest, readptr, n);
 		buffered -= n;
+		readptr += n;
 		return n;
 	}
-	memcpy(dest, buf, buffered);
+	memcpy(dest, readptr, buffered);
 	dest = (char *)dest + buffered;
 	rem = n - buffered;
+	buf_init();
 	readlen = readn(fd, buf, BUF_SIZE);
-	/* TODO: Error handling */
+	TODO: Error handling 
 	if (readlen < 0) {
 		return -1;
 	}
-	memcpy(dest, buf, readlen);
 	if ((unsigned int)readlen < rem) {
+		memcpy(dest, readptr, readlen);
 		buf_init();
 		return buffered + readlen;
 	}
+	memcpy(dest, readptr, rem);
 	buffered -= rem;
 	readptr = buf + rem;
 
 	return n;
+}*/
+int
+readn_buf(int fd, void *dest, size_t n)
+{
+	return readn(fd, dest, n);
 }
+
 
 ssize_t                         /* Write "n" bytes to a descriptor. */
 writen(int fd, const void *vptr, size_t n)
@@ -98,17 +107,17 @@ writen(int fd, const void *vptr, size_t n)
 int
 write_file(int fd, FILE *lfile, size_t n)
 {
-	char 	buf[BUF_SIZE];
+	char 	wbuf[BUF_SIZE];
 	size_t 	nleft, nread;
 
 	nleft = n;
 
 	while (nleft > 0) {
-		if ((nread = fread(buf, sizeof(char), BUF_SIZE, lfile)) == 0) {
+		if ((nread = fread(wbuf, sizeof(char), BUF_SIZE, lfile)) == 0) {
 			break;
 		}
 
-		nleft -= writen(fd, buf, nread);
+		nleft -= writen(fd, wbuf, nread);
 	}
 
 	return nleft;

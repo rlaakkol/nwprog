@@ -10,10 +10,12 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 {
 	struct stat 	file_info;
 
+	printf("Generating %s-request\n", type == GET ? "GET" : "PUT");
+
 	req->type = type;
 	req->uri[0] = '\0';
-	strncat(req->uri, "http://", 7);
-	strncat(req->uri, host, MAX_FIELDLEN-1);
+/*	strncat(req->uri, "http://", 7);
+	strncat(req->uri, host, MAX_FIELDLEN-1); */
 	strncat(req->uri, "/", 1);
 	strncat(req->uri, uri, MAX_FIELDLEN-strlen(req->uri)-1);
 	req->host[0] = '\0';
@@ -34,11 +36,15 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 int
 parse_response_startline(char *line, http_response *res)
 {
-	if (strcasecmp(line, HTTP_OK) == 0) {
+	int 	code, rest;
+	char 	http_ver[10];
+
+	sscanf(line, "%s %d %n", http_ver, &code, &rest);
+	if (code == 200) {
 		res->type = OK;
-	} else if (strcasecmp(line, HTTP_NFOUND) == 0) {
+	} else if (code == 404) {
 		res->type = NFOUND;
-	} else if (strcasecmp(line, HTTP_CREATED) == 0) {
+	} else if (code == 201) {
 		res->type = CREATED;
 	} else return -1;
 	return 0;
@@ -82,6 +88,7 @@ parse_response(int sock, http_response *res)
 	unsigned int	n;
 	int				first;
 
+	printf("Parsing response\n");
 	res->fd = sock;
 	first = 1;
 	
@@ -129,6 +136,8 @@ send_request(int fd, http_request *req, FILE *payload)
 {
 	char 	header[HEADER_BUF], *rtype;
 
+	printf("Sending request\n");
+
 	rtype = malloc(4);
 
 	if (req->type == GET) {
@@ -147,11 +156,14 @@ send_request(int fd, http_request *req, FILE *payload)
 	}
 	sprintf(header + strlen(header), CRLF);
 
+	printf("Request header:\n%s", header);
+
 	writen(fd, header, strlen(header));
 	if (req->payload_len > 0) {
 		write_file(fd, payload, req->payload_len);
 	}
 
+	free(rtype);
 	return 0;
 
 }

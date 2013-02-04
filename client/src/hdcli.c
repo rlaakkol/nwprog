@@ -24,25 +24,25 @@ int main(int argc, char **argv)
 	while ((c = getopt(argc, argv, "dul:r:p:")) != -1) {
 		switch (c) {
 			case 'd':
-				mode = 'd';
-				break;
+			mode = 'd';
+			break;
 			case 'u':
-				mode = 'u';
-				break;
+			mode = 'u';
+			break;
 			case 'l':
-				lfilename = malloc((strlen(optarg) + 1)*sizeof(char));
-				strcpy(lfilename, optarg);
-				break;
+			lfilename = malloc((strlen(optarg) + 1)*sizeof(char));
+			strcpy(lfilename, optarg);
+			break;
 			case 'r':
-				rfilename = malloc((strlen(optarg) + 1)*sizeof(char));
-				strcpy(rfilename, optarg);
-				break;
+			rfilename = malloc((strlen(optarg) + 1)*sizeof(char));
+			strcpy(rfilename, optarg);
+			break;
 			case 'p':
-				service = malloc((strlen(optarg) + 1)*sizeof(char));
-				strcpy(service, optarg);
-				break;
+			service = malloc((strlen(optarg) + 1)*sizeof(char));
+			strcpy(service, optarg);
+			break;
 			default:
-				break;
+			break;
 		}
 	}
 	if (optind < argc) {
@@ -50,11 +50,22 @@ int main(int argc, char **argv)
 		strcpy(host, argv[optind]);
 	} else {
 		fprintf(stderr, "usage: npbcli -d/-u -l localfile -r -p port/service remotefile host\n");
+		free(lfilename);
+		free(rfilename);
+		free(service);
+		free(req);
+		free(res);
 		return EXIT_FAILURE;
 	}
 
 	if ((sockfd = tcp_connect(host, service)) == -1) {
 		fprintf(stderr, "error connecting\n");
+		free(host);
+		free(lfilename);
+		free(rfilename);
+		free(service);
+		free(req);
+		free(res);
 		return EXIT_FAILURE;
 	}
 	buf_init();
@@ -62,23 +73,47 @@ int main(int argc, char **argv)
 	if (mode == 'd') {
 		if ((lfile = fopen(lfilename, "w")) == NULL) {
 			fprintf(stderr, "Error opening file %s for writing.\n", lfilename);
+			free(host);
+			free(lfilename);
+			free(rfilename);
+			free(service);
+			free(req);
+			free(res);
+			close(sockfd);
 			return EXIT_FAILURE;
 		}
-
+		
 		generate_request(GET, rfilename, host, "rlaakkol", NULL, 0, req);
+		
 		send_request(sockfd, req, NULL);
+		
 		parse_response(sockfd, res);
 		if (res->type == OK) {
+			printf("Writing response to file\n");
 			store_response_payload(lfile, res);
-			return 0;
 		} else {
 			fprintf(stderr, "Remote file not found\n");
+			free(host);
+			free(lfilename);
+			free(rfilename);
+			free(service);
+			free(req);
+			free(res);
+			close(sockfd);
+			fclose(lfile);
 			return EXIT_FAILURE;
 		}
 
 	} else {
 		if ((lfile = fopen(lfilename, "r")) == NULL) {
 			fprintf(stderr, "Error opening file %s for reading.\n", lfilename);
+			free(host);
+			free(lfilename);
+			free(rfilename);
+			free(service);
+			free(req);
+			free(res);
+			close(sockfd);
 			return EXIT_FAILURE;
 		}
 		generate_request(PUT, rfilename, host, "rlaakkol", lfilename, 0, req);
@@ -86,13 +121,29 @@ int main(int argc, char **argv)
 		parse_response(sockfd, res);
 		if (res->type == CREATED) {
 			fprintf(stdout, "Successfully created remote file\n");
-			return 0;
 		} else {
 			fprintf(stderr, "Error creating remote file\n");
+			free(host);
+			free(lfilename);
+			free(rfilename);
+			free(service);
+			free(req);
+			free(res);
+			close(sockfd);
+			fclose(lfile);
 			return EXIT_FAILURE;
 		}
 
 	}
+
+	free(host);
+	free(lfilename);
+	free(rfilename);
+	free(service);
+	free(req);
+	free(res);
+	close(sockfd);
+	fclose(lfile);
 
 	return EXIT_SUCCESS;
 }
