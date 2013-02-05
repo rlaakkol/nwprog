@@ -1,0 +1,62 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8x]{inputenc}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\hypersetup{
+    bookmarks=true,         % show bookmarks bar?
+    unicode=false,          % non-Latin characters in Acrobat’s bookmarks
+    pdftoolbar=true,        % show Acrobat’s toolbar?
+    pdfmenubar=true,        % show Acrobat’s menu?
+    pdffitwindow=false,     % window fit to page when opened
+    pdfstartview={FitH},    % fits the width of the page to the window
+    pdftitle={Documentation},    % title
+    pdfauthor={RL},     % author
+    pdfsubject={Subject},   % subject of the document
+    pdfcreator={Creator},   % creator of the document
+    pdfproducer={Producer}, % producer of the document
+    pdfkeywords={keywords}, % list of keywords
+    pdfnewwindow=true,      % links in new window
+    colorlinks=true,       % false: boxed links; true: colored links
+    linkcolor=black,          % color of internal links
+    citecolor=red,        % color of links to bibliography
+    filecolor=magenta,      % color of file links
+    urlcolor=blue           % color of external links
+}
+
+\usepackage[School of Electrical Engineering]{aaltologo}
+\usepackage{parskip}
+
+\begin{document}
+
+\begin{titlepage}%
+    \begin{flushleft}
+	    \AaltoLogoRandomSmall{1}\\
+S-38.3610 -- Network Programming\\
+Spring 2013\\
+\end{flushleft}
+
+
+    \vspace*{\stretch{1}}
+    \begin{center}
+	    \LARGE{\textbf{HDclient}\\
+	    \large{Documentation}
+    \end{center}
+    \vspace*{\stretch{1}}
+
+    \begin{center}%
+      \begin{tabular}{ll}
+        Riku Lääkkölä & 69896S \\ 
+		riku.laakkola@aalto.fi & \\
+        \end{tabular}
+
+    \end{center}
+  \end{titlepage}
+
+\tableofcontents
+
+\section{Usage Instructions}
+
+First, the program must be compiled by using {\tt make}.
+
+\end{document}

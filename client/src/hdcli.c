@@ -8,21 +8,31 @@
 #include "tcp_connect.h"
 #include "mysockio.h"
 
-int main(int argc, char **argv)
+void
+print_usage(void)
 {
-	int c, mode, sockfd;
-	char *host, *lfilename, *rfilename, *service;
+	fprintf(stderr, "usage: ./hdcli -d/-u -i iam -l localfile -r remotefile -p port/service host\n");
+}
+
+int
+main(int argc, char **argv)
+{
+	int c, mode = 'd', sockfd;
+	char *host, *lfilename, *rfilename, *service, *iam;
 	FILE *lfile = NULL;
 	http_request 	*req;
 	http_response 	*res;
-	if (argc != 9) {
-		fprintf(stderr, "usage: npbcli -d/-u -l localfile -r remotefile -p port/service host\n");
+	if (argc != 11) {
+		print_usage();
 		return EXIT_FAILURE;
 	}
 	req = malloc(sizeof(http_request));
 	res = malloc(sizeof(http_response));
 
-	while ((c = getopt(argc, argv, "dul:r:p:")) != -1) {
+	res->payload_len = 0;
+
+	/* Read command line arguments */
+	while ((c = getopt(argc, argv, "dul:r:p:i:")) != -1) {
 		switch (c) {
 			case 'd':
 			mode = 'd';
@@ -31,49 +41,63 @@ int main(int argc, char **argv)
 			mode = 'u';
 			break;
 			case 'l':
-			lfilename = malloc((strlen(optarg) + 1)*sizeof(char));
-			strcpy(lfilename, optarg);
+			
+			lfilename = optarg;
 			break;
 			case 'r':
-			rfilename = malloc((strlen(optarg) + 1)*sizeof(char));
-			strcpy(rfilename, optarg);
+			
+			rfilename = optarg;
 			break;
 			case 'p':
-			service = malloc((strlen(optarg) + 1)*sizeof(char));
-			strcpy(service, optarg);
+			
+			service = optarg;
+			break;
+			case 'i':
+			
+			iam = optarg;
 			break;
 			default:
 			break;
 		}
 	}
+
+	/* Main logic inside a do-while loop, break for freeing resources after failure */
 	do {
 		if (optind < argc) {
-			host = malloc((strlen(argv[optind]) + 1)*sizeof(char));
-			strcpy(host, argv[optind]);
+			host = argv[optind];
 		} else {
-			fprintf(stderr, "usage: npbcli -d/-u -l localfile -r -p port/service remotefile host\n");
+			print_usage();
 			break;
 		}
 
+		/* Connect to server */
 		if ((sockfd = tcp_connect(host, service)) == -1) {
 			break;
 		}
 
 		if (mode == 'd') {
+			/* Download (GET) mode */
+
+			/* Open local file for writing */
 			if ((lfile = fopen(lfilename, "w")) == NULL) {
 				fprintf(stderr, "Error opening file %s for writing: %s\n", lfilename, strerror(errno));
 				break;
 			}
 
-			generate_request(GET, rfilename, host, "rlaakkol", NULL, 0, NULL, req);
+			/* Generate GET request */
+			generate_request(GET, rfilename, host, iam, NULL, 0, NULL, req);
 
+			/* Send the request to server */
 			if (send_request(sockfd, req, NULL) < 0) break;
 
+			/* Parse the response */
 			if (parse_response(sockfd, res) < 0) break;
 			if (res->type == OK) {
+				/* If response is 200 OK, write content to file */
 				printf("Writing response to file\n");
 				if (store_response_payload(lfile, res) < 0) break;
 			} else {
+				/* If not OK, print error message and possible HTTP response content */
 				fprintf(stderr, "Non-OK response code: %d!\n", restype_to_int(res));
 				if (res->payload_len > 0) {
 					fprintf(stderr, "Error message payload:\n---\n");
@@ -82,21 +106,29 @@ int main(int argc, char **argv)
 				}
 				break;
 			}
-
 		} else {
+			/* Upload (PUT) mode */
+
+			/* Open local file for reading */
 			if ((lfile = fopen(lfilename, "r")) == NULL) {
 				fprintf(stderr, "Error opening file %s for reading: %s\n", lfilename, strerror(errno));
 				break;
 			}
-			generate_request(PUT, rfilename, host, "rlaakkol", lfilename, 0, "text/plain", req);
+
+			/* Generate PUT request */
+			generate_request(PUT, rfilename, host, iam, lfilename, 0, "text/plain", req);
 			
+			/* Send request to server */
 			if (send_request(sockfd, req, lfile) < 0) break;
 
+			/* Parse the response */
 			if (parse_response(sockfd, res) < 0) break;
 
 			if (res->type == CREATED || res->type == OK) {
+				/* If response type is CREATED (new file) or OK (existing file), print success message */
 				fprintf(stdout, "Successfully created remote file\n");
 			} else {
+				/* If response type is some failure, print data */
 				fprintf(stderr, "Error creating remote file! Code %d\n", restype_to_int(res));
 				if (res->payload_len > 0) {
 					 fprintf(stderr, "Error message payload:\n---\n");
@@ -107,10 +139,7 @@ int main(int argc, char **argv)
 
 		}
 
-		free(host);
-		free(lfilename);
-		free(rfilename);
-		free(service);
+		/* Everything was successful :) Free resources */
 		free(req);
 		free(res);
 		close(sockfd);
@@ -119,10 +148,7 @@ int main(int argc, char **argv)
 		return EXIT_SUCCESS;
 	} while (0);
 
-	free(host);
-	free(lfilename);
-	free(rfilename);
-	free(service);
+	/* Something went wrong :( Free resources */
 	free(req);
 	free(res);
 	if (sockfd != -1) close(sockfd);

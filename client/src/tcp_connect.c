@@ -1,6 +1,7 @@
 /*
  *DISCLAIMER!
  *This code is (almost) entirely copied from the tcp_connect.c -example of the course lectures!
+ * My additions: IP-address printing and comments
  */
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -26,49 +27,53 @@ void
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+/* Connect to address host (IP or DNS name), port serv, return socket fd */
 int
 tcp_connect(const char *host, const char *serv)
 {
 	int				sockfd, n;
 	struct addrinfo	hints, *res, *ressave;
 	char addrstr[INET6_ADDRSTRLEN];
-/*	char outbuf[80]; */
+	/* Specify to get both IPV6 adn IPV4 addresses and use TCP*/
  	bzero(&hints, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
+	fprintf(stdout, "Connecting to %s, port %s\n", host, serv);
+	/* Do a DNS query */
 	if ( (n = getaddrinfo(host, serv, &hints, &res)) != 0) {
-		fprintf(stderr, "tcp_connect error for %s, port %s: %s\n",
+		fprintf(stderr, "Error getting DNS record for %s, port %s: %s\n",
 			host, serv, gai_strerror(n));
 		return -1;
 	}
+	/* Save result pointer for freeing purposes */
 	ressave = res;
 
+	/* Iterate over DNS query results */
 	do {
+		/* Create socket */
 		sockfd = socket(res->ai_family, res->ai_socktype,
 			res->ai_protocol);
 		fprintf(stdout, "Trying address %s\n", inet_ntop(res->ai_family, get_in_addr(res->ai_addr), addrstr, sizeof(addrstr)));
-		if (sockfd < 0)
-			continue;	/* ignore this one */
+		if (sockfd < 0) /* Socket creation failed, */
+			continue;	/* ignore this one, go to next  */
 
 			if (connect(sockfd, res->ai_addr, res->ai_addrlen) == 0){
 				fprintf(stdout, "Connected to address %s\n", addrstr);
-				break;		/* success */
+				break;		/* Connect successful! Stop iterating! */
 			}
 
-		close(sockfd);	/* ignore this one */
+		close(sockfd);	/* Connect unsuccessful. Ignore this one, go to next */
 		} while ( (res = res->ai_next) != NULL);
 
-	if (res == NULL) {	/* errno set from final connect() */
-		fprintf(stderr, "tcp_connect error for %s, port %s: %s\n", host, serv, strerror(errno));
+	if (res == NULL) {	/* Successful connection did not happen. errno set from final connect() */
+		fprintf(stderr, "Error connecting to %s, port %s: %s\n", host, serv, strerror(errno));
 		sockfd = -1;
-	} /* else {
-		struct sockaddr_in *sin = (struct sockaddr_in *)res->ai_addr;
-		const char *ret = inet_ntop(res->ai_family, &(sin->sin_addr),
-		outbuf, sizeof(outbuf));
-	} */
+	}
 
-freeaddrinfo(ressave);
+	/* free resources */
+	freeaddrinfo(ressave);
 
-return(sockfd);
+
+	return(sockfd);
 }

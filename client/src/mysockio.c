@@ -4,12 +4,9 @@
 
 #include "mysockio.h"
 
-/*char	buf[BUF_SIZE];
-char 	*readptr;
-size_t 	buffered; */
-
-
-
+/* Read n bytes from socket fd and store into vptr
+ * DISCLAIMER: This function is copied directly from Stevens UNP book example
+ */
 int
 readn(int fd, void *vptr, size_t n)
 {
@@ -36,41 +33,10 @@ readn(int fd, void *vptr, size_t n)
 	return(n - nleft);		/* return >= 0 */
 }
 
-/*int
-readn_buf(int fd, void *dest, size_t n)
-{
-	size_t 	rem;
-	int 	readlen;
-
-	if (buffered >= n) {
-		memcpy(dest, readptr, n);
-		buffered -= n;
-		readptr += n;
-		return n;
-	}
-	memcpy(dest, readptr, buffered);
-	dest = (char *)dest + buffered;
-	rem = n - buffered;
-	buf_init();
-	readlen = readn(fd, buf, BUF_SIZE);
-	TODO: Error handling 
-	if (readlen < 0) {
-		return -1;
-	}
-	if ((unsigned int)readlen < rem) {
-		memcpy(dest, readptr, readlen);
-		buf_init();
-		return buffered + readlen;
-	}
-	memcpy(dest, readptr, rem);
-	buffered -= rem;
-	readptr = buf + rem;
-
-	return n;
-}*/
-
-
-ssize_t                         /* Write "n" bytes to a descriptor. */
+/* Write "n" bytes to a descriptor. 
+ * DISCLAIMER: This function is copied directly from Stevens UNP book example
+ */
+ssize_t                         
 writen(int fd, const void *vptr, size_t n)
 {
 	size_t nleft;
@@ -94,6 +60,7 @@ writen(int fd, const void *vptr, size_t n)
 	return (n);
 }
 
+/* Write local file stream contents to socket */
 int
 write_file(int fd, FILE *lfile, size_t n)
 {
@@ -103,10 +70,12 @@ write_file(int fd, FILE *lfile, size_t n)
 	nleft = n;
 
 	while (nleft > 0) {
+		/* Read file stream */
 		if ((nread = fread(wbuf, sizeof(char), BUF_SIZE, lfile)) == 0) {
 			break;
 		}
 
+		/* Write to socket */
 		nleft -= writen(fd, wbuf, nread);
 	}
 
