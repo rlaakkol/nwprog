@@ -3,10 +3,15 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "myhttp.h"
 #include "tcp_connect.h"
 #include "mysockio.h"
+
+
+FILE 			*lfile;
+int 			sockfd;
 
 void
 print_usage(void)
@@ -14,18 +19,41 @@ print_usage(void)
 	fprintf(stderr, "usage: ./hdcli -d/-u -i iam -l localfile -r remotefile -p port/service host\n");
 }
 
+/* Signal handler (Close socket and stream on SIGINT) */
+void
+handler(int signo)
+{
+	if (signo == SIGINT) {
+		if (sockfd != -1) close(sockfd);
+		if (lfile != NULL) fclose(lfile);
+		exit(EXIT_FAILURE);
+	}
+}
+
 int
 main(int argc, char **argv)
 {
-	int c, mode = 'd', sockfd;
-	char *host, *lfilename, *rfilename, *service, *iam;
-	FILE *lfile = NULL;
-	http_request 	*req;
-	http_response 	*res;
+	int 				c, mode = 'd';
+	char 				*host, *lfilename, *rfilename, *service, *iam;
+	struct sigaction	sa;
+	http_request 		*req;
+	http_response 		*res;
+
+	lfile = NULL;
+	sockfd = -1;
+
 	if (argc != 11) {
 		print_usage();
 		return EXIT_FAILURE;
 	}
+
+	/* Handle SIGINT */
+	sa.sa_handler = handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sigaction(SIGINT, &sa, NULL);
+	
+	
 	req = malloc(sizeof(http_request));
 	res = malloc(sizeof(http_response));
 
