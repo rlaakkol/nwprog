@@ -36,6 +36,7 @@ main(int argc, char **argv)
 	int 				c, mode = 'd';
 	char 				*host, *lfilename, *rfilename, *service, *iam;
 	struct sigaction	sa;
+	size_t				remaining;
 	http_request 		*req;
 	http_response 		*res;
 
@@ -123,14 +124,20 @@ main(int argc, char **argv)
 			if (res->type == OK) {
 				/* If response is 200 OK, write content to file */
 				printf("Writing response to file\n");
-				if (store_response_payload(lfile, res) < 0) break;
+				if (store_response_payload(lfile, res, &remaining) < 0) { 
+					break;
+				}
+				if (remaining > 0) {
+					fprintf(stderr, "Only partially downloaded before connection closed! %ld bytes missing from the end. Stopping!\n", remaining);
+					break;
+				}
 			} else {
 				/* If not OK, print error message and possible HTTP response content */
 				fprintf(stderr, "Non-OK response code: %d!\n", restype_to_int(res));
 				if (res->payload_len > 0) {
 					fprintf(stderr, "Error message payload:\n---\n");
 			
-					store_response_payload(stderr, res);
+					store_response_payload(stderr, res, &remaining);
 				}
 				break;
 			}
@@ -160,7 +167,7 @@ main(int argc, char **argv)
 				fprintf(stderr, "Error creating remote file! Code %d\n", restype_to_int(res));
 				if (res->payload_len > 0) {
 					 fprintf(stderr, "Error message payload:\n---\n");
-					store_response_payload(stderr, res);
+					store_response_payload(stderr, res, &remaining);
 				}
 				break;
 			}

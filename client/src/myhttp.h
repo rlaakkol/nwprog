@@ -57,7 +57,7 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 
 /* Write response payload into local file stream from socket */
 int
-store_response_payload(FILE* outfile, http_response *res);
+store_response_payload(FILE* outfile, http_response *res, size_t *remaining);
 
 /* Create header string and send (with possible payload) to server socket */
 int

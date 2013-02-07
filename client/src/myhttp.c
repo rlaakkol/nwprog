@@ -137,17 +137,18 @@ parse_response(int sock, http_response *res)
 
 /* Write response payload into local file stream from socket */
 int
-store_response_payload(FILE *outfile, http_response *res)
+store_response_payload(FILE *outfile, http_response *res, size_t *remaining)
 {
-	size_t	remaining, next;
+	size_t	next;
 	int		rbytes, wbytes;
 	char	buf[BUF_SIZE];
 
-	remaining = res->payload_len;
 
-	while (remaining) {
+	*remaining = res->payload_len;
+
+	while (*remaining) {
 		/* Calculate maximum read amount and read from socket */
-		next = remaining < BUF_SIZE ? remaining : BUF_SIZE;
+		next = *remaining < BUF_SIZE ? *remaining : BUF_SIZE;
 		rbytes = readn(res->fd, buf, next);
 		if (rbytes < 1) {
 			/* If read returns 0 or less, return */
@@ -158,7 +159,7 @@ store_response_payload(FILE *outfile, http_response *res)
 			fprintf(stderr, "Error writing local file: %s\n", strerror(errno));
 			return EXIT_FAILURE;
 		}
-		remaining -= rbytes;
+		*remaining -= rbytes;
 	}
 	return EXIT_SUCCESS;
 }
