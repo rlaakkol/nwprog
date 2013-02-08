@@ -128,7 +128,7 @@ main(int argc, char **argv)
 					break;
 				}
 				if (remaining > 0) {
-					fprintf(stderr, "Only partially downloaded before connection closed! %ld bytes missing from the end. Stopping!\n", remaining);
+					fprintf(stderr, "Only partially downloaded before connection closed! %lu bytes missing from the end. Stopping!\n", (long unsigned int)remaining);
 					break;
 				}
 			} else {
