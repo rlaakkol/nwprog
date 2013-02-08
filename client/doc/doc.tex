@@ -133,10 +133,10 @@ When network connectivity is lost, the read call blocks and the program has to b
 
 \begin{enumerate}
 \item The implementation is address family independent. This is accomplished by providing \emph{getaddrinfo} with a \emph{hints} structure that has \emph{ai\_family} of value \emph{AF\_UNSPEC}. This was tested by running the software from my home (IPv6 connectivity) and Otakaari 5 (no IPv6) and some informative statistics printing.
-\item The implementation iterates over all the addresses of the DNS query response (do-while with res switched to res->next at the end) until a connection is successful or all the address options have failed (error or timeout). If no connection is established an error message is printed and the program exits.
-\item When a host is not connected, the program will try to connect and after the default timeout period it will print an error message and exit, because there is no route to the host.
+\item The implementation iterates over all the addresses of the DNS query response (do-while with res switched to res->next at the end) until a connection is successful or all the address options have failed (error or timeout). If no connection is established, an error message is printed and the program exits.
+\item When a host is not connected, the program will try to connect, and after the default timeout period it will print an error message and exit, because there is no route to the host.
 \item When the host has no HTTP server running, the software will print a "Connection refused" message, because the host is not listening on the specified port.
-\item When a server is suddenly terminated, it will close the socket and the client side read (or write) will return 0. The client software keeps track of the remaining bytes and reports if the file was not downloaded completely. If the server host is suddenly disconnected from the network, the client side socket operation will block, because the socket is not closed properly. If the server regains connectivity, data transfer may be able to continue.
+\item When a server is suddenly terminated, it will close the socket and the client side read (or write) will return 0. The client software keeps track of the remaining bytes (according to the Content-Length value), and reports if the file was not downloaded completely. If the server host is suddenly disconnected from the network, the client side socket operation will block, because the socket is not closed properly. If the server regains connectivity, data transfer may be able to continue.
 \end{enumerate}
 
 \section{Diary}

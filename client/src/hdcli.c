@@ -31,10 +31,37 @@ handler(int signo)
 }
 
 int
+parse_url(char *url, char *iam, char *host, char *service, char *path)
+{
+	char bufa[256], bufb[256], bufc[256], scheme[16];
+
+	if (sscanf(url, "%64[^:]://%256s", scheme, bufa) < 2) {
+		return -1;
+	}
+
+
+	if (sscanf(bufa, "%64[^@]@%256s", iam, bufb) < 2) {
+		strcpy(iam, "none");
+		strcpy(bufb, bufa);
+	}
+
+	if (sscanf(bufb, "%64[^/]/%64s", bufc, path) < 2){
+		return -1;
+	}
+	if (sscanf(bufc, "%64[^:]:%256s", host, service) < 2) {
+		strcpy(service, "80");
+		strcpy(host, bufc); 
+	}
+
+	return 0;
+
+}
+
+int
 main(int argc, char **argv)
 {
 	int 				c, mode = 'd';
-	char 				*host, *lfilename, *rfilename, *service, *iam;
+	char 				host[64], lfilename[64], rfilename[64], service[64], iam[64];
 	struct sigaction	sa;
 	size_t				remaining;
 	http_request 		*req;
@@ -43,7 +70,7 @@ main(int argc, char **argv)
 	lfile = NULL;
 	sockfd = -1;
 
-	if (argc != 11) {
+	if (argc > 11) {
 		print_usage();
 		return EXIT_FAILURE;
 	}
@@ -60,44 +87,67 @@ main(int argc, char **argv)
 
 	res->payload_len = 0;
 
+	if (argc == 11) {
 	/* Read command line arguments */
-	while ((c = getopt(argc, argv, "dul:r:p:i:")) != -1) {
-		switch (c) {
-			case 'd':
-			mode = 'd';
-			break;
-			case 'u':
-			mode = 'u';
-			break;
-			case 'l':
-			
-			lfilename = optarg;
-			break;
-			case 'r':
-			
-			rfilename = optarg;
-			break;
-			case 'p':
-			
-			service = optarg;
-			break;
-			case 'i':
-			
-			iam = optarg;
-			break;
-			default:
-			break;
+		while ((c = getopt(argc, argv, "dul:r:p:i:")) != -1) {
+			switch (c) {
+				case 'd':
+				mode = 'd';
+				break;
+				case 'u':
+				mode = 'u';
+				break;
+				case 'l':
+				strcpy(lfilename, optarg);
+				break;
+				case 'r':
+				strcpy(rfilename, optarg);
+				break;
+				case 'p':
+				strcpy(service, optarg);
+				break;
+				case 'i':
+				strcpy(iam, optarg);
+				break;
+				default:
+				break;
+			}
 		}
+		if (optind < argc) {
+			strcpy(host, argv[optind]);
+		} else {
+			print_usage();
+			return EXIT_FAILURE;
+		}
+	}
+	else if (argc == 5) {
+		while ((c = getopt(argc, argv, "dul:")) != -1) {
+			switch (c) {
+				case 'd':
+				mode = 'd';
+				break;
+				case 'u':
+				mode = 'u';
+				break;
+				case 'l':
+				strcpy(lfilename, optarg);
+				break;
+				default:
+				break;
+			}
+		}
+		if (parse_url(argv[4], iam, host, service, rfilename) < 0) {
+			fprintf(stderr, "Malformed URL\n");
+			return EXIT_FAILURE;
+		}
+	} else {
+		print_usage();
+		return EXIT_FAILURE;
 	}
 
 	/* Main logic inside a do-while loop, break for freeing resources after failure */
 	do {
-		if (optind < argc) {
-			host = argv[optind];
-		} else {
-			print_usage();
-			break;
-		}
+
 
 		/* Connect to server */
 		if ((sockfd = tcp_connect(host, service)) == -1) {
