@@ -15,3 +15,9 @@ writen(int fd, const void *vptr, size_t n);
 /* Write local file stream contents to socket */
 int
 write_file(int fd, FILE *lfile, size_t n);
+
+void
+buf_init(void);
+
+int
+readn_buf(int fd, void *dest, size_t n);

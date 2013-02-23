@@ -33,22 +33,22 @@ handler(int signo)
 int
 parse_url(char *url, char *iam, char *host, char *service, char *path)
 {
-	char bufa[256], bufb[256], bufc[256], scheme[16];
+	char bufa[512], bufb[512], bufc[512], scheme[16];
 
-	if (sscanf(url, "%64[^:]://%256s", scheme, bufa) < 2) {
+	if (sscanf(url, "%64[^:]://%512s", scheme, bufa) < 2) {
 		return -1;
 	}
 
 
-	if (sscanf(bufa, "%64[^@]@%256s", iam, bufb) < 2) {
+	if (sscanf(bufa, "%64[^@]@%512s", iam, bufb) < 2) {
 		strcpy(iam, "none");
 		strcpy(bufb, bufa);
 	}
 
-	if (sscanf(bufb, "%64[^/]/%64s", bufc, path) < 2){
+	if (sscanf(bufb, "%512[^/]/%256s", bufc, path) < 2){
 		return -1;
 	}
-	if (sscanf(bufc, "%64[^:]:%256s", host, service) < 2) {
+	if (sscanf(bufc, "%64[^:]:%64s", host, service) < 2) {
 		strcpy(service, "80");
 		strcpy(host, bufc); 
 	}
@@ -61,7 +61,7 @@ int
 main(int argc, char **argv)
 {
 	int 				c, mode = 'd';
-	char 				host[64], lfilename[64], rfilename[64], service[64], iam[64];
+	char 				host[64], lfilename[64], rfilename[256], service[64], iam[64];
 	struct sigaction	sa;
 	size_t				remaining;
 	http_request 		*req;

@@ -109,16 +109,19 @@ parse_response(int sock, http_response *res)
 	printf("Parsing response\n");
 	res->fd = sock;
 	first = 1;
+
+	buf_init();
 	
 	/* Start loop */
 	while(1) {
 		n = 0;
 		do {
 			/* Read socket one byte at a time until CRLF (end of line) */
-			if (readn(sock, line + n, 1) < 0) {
+			if (readn_buf(sock, line + n, 1) < 0) {
 				fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
 				return EXIT_FAILURE;
 			}
+/*			printf("%c", line[n]); */
 			n++;
 		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, line + n - 2, 2) != 0));
 			/* Terminate line */
@@ -149,7 +152,7 @@ store_response_payload(FILE *outfile, http_response *res, size_t *remaining)
 	while (*remaining) {
 		/* Calculate maximum read amount and read from socket */
 		next = *remaining < BUF_SIZE ? *remaining : BUF_SIZE;
-		rbytes = readn(res->fd, buf, next);
+		rbytes = readn_buf(res->fd, buf, next);
 		if (rbytes < 1) {
 			/* If read returns 0 or less, return */
 			return rbytes;

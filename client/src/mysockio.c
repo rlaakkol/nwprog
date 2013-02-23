@@ -4,6 +4,10 @@
 
 #include "mysockio.h"
 
+char	buf[BUF_SIZE];
+char 	*readptr;
+size_t 	buffered;
+
 /* Read n bytes from socket fd and store into vptr
  * DISCLAIMER: This function is copied directly from Stevens UNP book example
  */
@@ -81,4 +85,50 @@ write_file(int fd, FILE *lfile, size_t n)
 
 	return nleft;
 
+}
+
+void
+buf_init(void)
+{
+	buffered = 0;
+	readptr = buf;
+}
+
+int
+readn_buf(int fd, void *dest, size_t n)
+{
+	int 	readlen;
+
+
+
+	if (buffered >= n) {
+		memcpy(dest, readptr, n);
+		buffered -= n;
+		readptr += n;
+		return n;
+	}
+	if (buffered > 0) {
+		memcpy(dest, readptr, buffered);
+		dest = (char *)dest + buffered;
+		n -= buffered;
+		buf_init();
+	}
+	readlen = read(fd, buf, BUF_SIZE);
+
+	/* TODO: Error handling */
+	if (readlen < 0) {
+		return -1;
+	}
+
+	if ((unsigned int)readlen < n) {
+		memcpy(dest, buf, readlen);
+		buf_init();
+		return buffered + readlen;
+	}
+
+	memcpy(dest, buf, n);
+	buffered = readlen - n;
+	readptr = buf + n;
+
+	return n;
 }
