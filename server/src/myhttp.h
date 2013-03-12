@@ -49,7 +49,7 @@ restype_to_int(http_response *res);
 
 /* Parse the entire response (using above helper functions) and store values into res */
 int
-parse_request(int sock, http_response *res);
+parse_request(int sock, http_request *res);
 
 /* Generate a HTTP request struct in req */
 void

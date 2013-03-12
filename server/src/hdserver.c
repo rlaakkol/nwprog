@@ -10,6 +10,31 @@
 
 #define MAXFD 64
 
+struct cli_struct {
+	my_buf 	buf;
+	int 	fd;
+}
+
+void
+make_nonblocking(int fd)
+{
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+}
+
+int
+handle_readable(my_cli *cli)
+{
+
+	return 0;
+}
+
+int
+handle_writable(my_cli *cli)
+{
+
+	return 0;
+}
+
 int
 daemonize()
 {
@@ -81,8 +106,11 @@ main(int argc, char **argv)
 	void		  sig_chld(int), sig_int(int), web_child(int);
 	socklen_t	  clilen, addrlen;
 	struct sockaddr	  *cliaddr;
+	GSList 			*clients, *next;
 
 	daemonize();
+
+	clients = NULL;
 
 	facility = LOG_LOCAL7;
 	// open syslog
@@ -125,6 +153,12 @@ main(int argc, char **argv)
 			exit(0);
 		}
 		close(connfd);			/* parent closes connected socket */
+		next = clients;
+		while (next != NULL) {
+			if (next->data->buffered)
+			next = g_slist_next(next);
+		}
+
 	}
 
 	free(cliaddr);
