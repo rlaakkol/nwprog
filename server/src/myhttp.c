@@ -1,240 +1,217 @@
-#include "myhttp.h"
+#include <string.h>
 #include <sys/stat.h>
+#include <stdlib.h>
+#include <errno.h>
 
+#include "myhttp.h"
+#include "mysockio.h"
 
-/* Parse startline of HTTP request
- * */
-int parse_startline(char *line, Http_info *specs)
+/* Return HTTP response type as a number */
+int
+restype_to_int(http_response *res)
 {
-	char	*ptr1, *ptr2;
+	return res->type;
+}
 
-	ptr1 = strchr(line, ' ');
-	if (ptr1 == NULL) {
-		syslog(LOG_INFO, "Malformed request line");
+/* Generate a HTTP request struct in req */
+void
+generate_response(response_type type, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req)
+{
+	struct stat 	file_info;
+
+	fprintf(stdout, "Generating %s-request\n", type == GET ? "GET" : "PUT");
+
+	/* Fill the fields */
+	req->type = type;
+	req->uri[0] = '\0';
+	strncat(req->uri, "/", 1);
+	strncat(req->uri, uri, MAX_FIELDLEN-strlen(req->uri)-1);
+	req->host[0] = '\0';
+	strncat(req->host, host, MAX_FIELDLEN-1);
+	req->iam[0] = '\0';
+	strncat(req->iam, iam, MAX_FIELDLEN-1);
+	req->close = close;
+	req->content_type[0] = '\0';
+	if (req->type == PUT && req->content_type != NULL) {
+		strncat(req->content_type, content_type, MAX_FIELDLEN-1);
+	}
+
+	if (payload_filename != NULL) {
+		/* If there is payload in the request, count the size */
+		stat(payload_filename, &file_info);
+		req->payload_len = (unsigned long) file_info.st_size;
+	} else {
+		req->payload_len = 0;
+	}
+
+}
+
+/* Parse the first line of a HTTP response (store the response type)*/
+int
+parse_response_startline(char *line, http_response *res)
+{
+	int 	code;
+	char 	http_ver[10];
+
+	if (sscanf(line, "%8s %d", http_ver, &code) != 2) {
+		fprintf(stderr, "Malformed response startline!\n");
+		res->type = OTHER;
 		return -1;
 	}
-	if (!strncasecmp(line, "GET", ptr1 - line)) specs->command = GET;
-	else if (!strncasecmp(line, "PUT", ptr1 - line)) specs->command = PUT;
-	else {
-		syslog(LOG_INFO, "Unsupported HTTP request");
-		return -1;
-	}
-	ptr2 = strchr(ptr1+1, ' ');
-	if (ptr2 == NULL) {
-		syslog(LOG_INFO, "Malformed request line");
-		return -1;
-	}
-	strncpy(specs->uri, ptr1+1, ptr2 - (ptr1+1));
-	specs->uri[ptr2 - (ptr1+1)] = '\0';
-	syslog(LOG_INFO, "request uri: %s", specs->uri);
+
+	res->type = code;
+
 	return 0;
 }
 
-/* Parse a single header line
- *
- * */
-int parse_header(char *line, Http_info *specs)
+/* Parse a single line of a HTTP header (ends with "\r\n\0") */
+int
+parse_response_headerline(char *line, http_response *res)
 {
-	size_t	len;
-	char	*ptr1, *ptr2;
-	len = 0;
-	if (strncmp(line, "\r\n", 2) == 0) return 0;	// End of header
-	while(line[len++] != '\n');
-	if ((ptr1 = strchr(line, ':')) == NULL) {
-		syslog(LOG_INFO, "Malformed header");
-		return -1;
-	}
-	ptr2 = ptr1 + 1;
-	while (*ptr2 == ' ') ptr2++;
-	if (strncasecmp(line, "host", ptr1 - line) == 0) {
-		strncpy(specs->host, ptr1, line + len - ptr2);
-		specs->host[line + len - ptr2 - 2] = '\0';
-	} else if (strncasecmp(line, "connection", ptr1 -line) == 0) {
-		if (strncasecmp(ptr2, "close\r", line + len - ptr2)) specs->close = 1;
-	} else if (strncasecmp(line, "iam", ptr1 - line) == 0) {
-		strncpy(specs->iam, ptr1, line + len - ptr2);
-		specs->iam[line + len - ptr2 - 2] = '\0';
-	} else if (strncasecmp(line, "content-length", ptr1 - line) == 0) {
-		if ((specs->length = atoi(ptr2)) == 0) {
-			syslog(LOG_INFO, "Malformed header: %s: %s", line, ptr2);
-			return -1;
-		}
-	}
-	return 1;
+/*	size_t	len; */
+	char		field[MAX_FIELDLEN], value[MAX_FIELDLEN];
+	long int 	len;
 
+
+
+	if (strncmp(line, "\r\n", 2) == 0) return 1;	/* End of header */
+	/* Store fieldame and value strings into different buffers */
+	sscanf(line, "%[^:]:%s", field, value);
+
+
+	if (strcasecmp(field, "content-length") == 0) {
+		/* Store content length */
+		if ((len = atol(value)) < 0) {
+			fprintf(stderr, "Received malformed \"%s\" header line:\n%s", field, line);
+
+			return -1;
+		} else {
+			res->payload_len = len;
+			fprintf(stdout, "Content-Length: %ld\n", len);
+		}
+	} else if (strcasecmp(field, "content-type") == 0) {
+		/* Store content type */
+		strcpy(res->content_type, value);
+	}
+
+
+	return 0;
 }
 
-char *parse_uri(char *uri)
+/* Parse the entire response (using above helper functions) and store values into res */
+int
+parse_response(int sock, http_response *res)
 {
-	char	*ptr1, *path;
+	char			line[MAX_FIELDLEN];
+	unsigned int	n;
+	int				first, ret;
 
-	if (strlen(uri) > 6 && (!strncmp(uri, "http://", 7) || !strncmp(uri, "https://", 8))) {
-		if ((ptr1 = strchr(uri, '/')) == NULL) {
-			syslog(LOG_INFO, "Invalid path");
-			return NULL;
-		}
-		path = ptr1+1;
+	printf("Parsing response\n");
+	res->fd = sock;
+	first = 1;
+
+	buf_init();
+	
+	/* Start loop */
+	while(1) {
+		n = 0;
+		do {
+			/* Read socket one byte at a time until CRLF (end of line) */
+			if (readn_buf(sock, line + n, 1) < 0) {
+				fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
+				return EXIT_FAILURE;
+			}
+/*			printf("%c", line[n]); */
+			n++;
+		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, line + n - 2, 2) != 0));
+			/* Terminate line */
+			line[n] = '\0';
+		if (first) {
+			/* If first line, parse accordingly */
+			if (parse_response_startline(line, res) < 0) return EXIT_FAILURE;
+			first = 0;
+			/* Else parse as headerline, return value from parser means end of header */
+		} else if ((ret = parse_response_headerline(line, res)) == 1) break;
+		else if (ret < 0) return EXIT_FAILURE;
 	}
-	else path = uri+1;
-	return path;
+
+	return EXIT_SUCCESS;
 }
 
-
-int process_put(int sockfd, Http_info *specs, char *oldbuf, ssize_t oldrem)
+/* Write response payload into local file stream from socket */
+int
+store_response_payload(FILE *outfile, http_response *res, size_t *remaining)
 {
-	int	new;
-	FILE	*outfile;
-	ssize_t	rem, readlen, n;
-	char	*path, buf[MAXLINE], *reply;
-	struct stat	fs;
-	
-	new = 0;
-	path = parse_uri(specs->uri);
-	if (stat(path, &fs) < 0) {
-		if (errno == ENOENT) {
-			new = 1;
-			syslog(LOG_INFO, "new file");
-		}else {
-			syslog(LOG_INFO, "invalid path: %s", path);
-			writen(sockfd, REPLY_400, strlen(REPLY_400));
-			exit(-1);
-		}
-	}
-	syslog(LOG_INFO, "writing file %s of size %zi", path, (ssize_t) specs->length);
-	if ((outfile = fopen(path, "w")) == NULL) {
-		syslog(LOG_INFO, "invalid path: %s", path);
-		writen(sockfd, REPLY_400, strlen(REPLY_400));
-		exit(-1);
-	}
-	if (specs->length == 0) {
-		if (unlink(path) < 0) {
-			syslog(LOG_INFO, "error removing %s", path);
-			exit(0);
-		}
-		return 0;
-	}
+	size_t	next;
+	int		rbytes, wbytes;
+	char	buf[BUF_SIZE];
 
 
+	*remaining = res->payload_len;
 
-	if (fwrite(oldbuf, sizeof(char), oldrem, outfile) < (size_t) oldrem) {
-		syslog(LOG_ERR, "fwrite error\n");
-		return EXIT_FAILURE;
-	}
-	
-	
-	rem = specs->length - oldrem;
-	n = 0;
-	while(rem > 0) {
-		readlen = MAXLINE < rem ? MAXLINE : rem;
-		syslog(LOG_INFO, "reading %zi bytes", readlen);
-		if ((n = read(sockfd, buf, readlen)) <= 0) {
-			syslog(LOG_INFO, "read error");
-			return -1;
+	while (*remaining) {
+		/* Calculate maximum read amount and read from socket */
+		next = *remaining < BUF_SIZE ? *remaining : BUF_SIZE;
+		rbytes = readn_buf(res->fd, buf, next);
+		if (rbytes < 1) {
+			/* If read returns 0 or less, return */
+			return rbytes;
 		}
-		buf[n] = '\0';
-		if (fputs(buf, outfile) == EOF) {
-			syslog(LOG_ERR, "fputs error\n");
+		/* Write into file stream */
+		if ((wbytes = fwrite(buf, 1, rbytes, outfile)) < rbytes) {
+			fprintf(stderr, "Error writing local file: %s\n", strerror(errno));
 			return EXIT_FAILURE;
 		}
-		rem -= n;
+		*remaining -= rbytes;
 	}
-	if (rem > 0) {
-		syslog(LOG_INFO, "connection lost");
-		return -1;
-	}
-	fclose(outfile);
-	reply = new ? REPLY_201 : REPLY_200;
-	if (writen(sockfd, reply, strlen(reply)) < (ssize_t) strlen(reply)) {
-		syslog(LOG_INFO, "error sending response");
-		return -1;
-	}
-	
-
-
-	return 0;
+	return EXIT_SUCCESS;
 }
 
-
-int process_get(int sockfd, Http_info *specs)
+/* Create header string and send (with possible payload) to server socket */
+int
+send_request(int fd, http_request *req, FILE *payload)
 {
-	struct stat	fs;
-	char		*path, buf[MAXN], *temp, ptemp[80];
-	FILE		*f;
-	ssize_t		l, rem, ret, dl;
-	DIR		*d;
-	struct dirent	*de;
-	
+	char 	header[HEADER_BUF], *rtype;
 
-	path = parse_uri(specs->uri);
-	if (strcasecmp(path, "index") == 0) {
-		path = getcwd(ptemp, 80);
-		if ((d = opendir(path)) == NULL) {
-			syslog(LOG_INFO, "error reading working directory: %s", path);
-			writen(sockfd, REPLY_404, strlen(REPLY_404));
-			exit(-1);
+	fprintf(stdout, "Sending request\n");
+
+	rtype = malloc(4);
+
+	if (req->type == GET) {
+		strncpy(rtype, "GET", 4);
+	} else {
+		strncpy(rtype, "PUT", 4);
+	}
+	header[0] = '\0';
+
+	/* Format header string */
+	sprintf(header, STARTLINEFMT, rtype, req->uri);
+	sprintf(header + strlen(header), SHEADERFMT, "Host", req->host);
+	if (strcasecmp(req->iam, "none") != 0) {
+		sprintf(header + strlen(header), SHEADERFMT, "Iam", req->iam);
+	}
+	if (req->payload_len > 0) {
+		sprintf(header + strlen(header), IHEADERFMT, "Content-Length", req->payload_len);
+	}
+	if (strlen(req->content_type) > 0) {
+		sprintf(header + strlen(header), SHEADERFMT, "Content-Type", req->content_type);
+	}
+	sprintf(header + strlen(header), CRLF);
+
+	/* Informative stdout print */
+	fprintf(stdout, "Request header:\n---\n%s---\n", header);
+
+	/* Write header to socket */
+	writen(fd, header, strlen(header));
+	if (req->payload_len > 0) {
+		/* If there is payload, write it too */
+		if (write_file(fd, payload, req->payload_len) > 0) {
+			fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
+			return EXIT_FAILURE;
 		}
-		dl = 0;
-		while ((de = readdir(d)) != NULL) {
-			strcpy(buf+dl, de->d_name);
-			dl += strlen(de->d_name) + 1;
-			buf[dl-1] = '\n';
-		}
-		buf[dl] = '\0';
-		temp = malloc(dl*sizeof(char));
-		strcpy(temp, buf);
-		sprintf(buf, REPLY_200F, dl-1, "text/plain");
-		if (writen(sockfd, buf, strlen(buf)) < (ssize_t) strlen(buf)) {
-			syslog(LOG_INFO, "index write error 1");
-			exit(-1);
-		}
-		if (writen(sockfd, temp, dl-1) < dl-1) {
-			syslog(LOG_INFO, "index write error 1");
-			exit(-1);
-		}
-		free(temp);
-		if (specs->close) close(sockfd);
-		return 0;
-
 	}
 
-	if (stat(path, &fs) < 0) {
-		syslog(LOG_INFO, "invalid path: %s", path);
-		writen(sockfd, REPLY_404, strlen(REPLY_404));
-		exit(-1);
-	}
-	if ((f = fopen(path, "r")) == NULL) {
-		syslog(LOG_INFO, "invalid path: %s", path);
-		writen(sockfd, REPLY_404, strlen(REPLY_404));
-		exit(-1);
-	}
+	free(rtype);
+	return EXIT_SUCCESS;
 
-	snprintf(buf, MAXLINE, REPLY_200F, (ssize_t) fs.st_size, "text/html");
-	l = strlen(buf);
-	if (writen(sockfd, buf, l) < l) {
-		syslog(LOG_INFO, "write error 1");
-		exit(-1);
-	}
-	
-	rem = fs.st_size;
-	
-	while (rem > 0 && (ret = fread(buf, sizeof(char), MAXN, f)) > 0) {
-		if (writen(sockfd, buf, ret) < ret) {
-			syslog(LOG_INFO, "write error 2");
-			exit(-1);
-		}
-		rem -= ret;
-	}
-	if (rem > 0) {
-		syslog(LOG_INFO, "write error 3");
-		exit(-1);
-	}
-	if (specs->close) close(sockfd);
-
-	fclose(f);
-
-
-
-
-
-	return 0;
 }

@@ -1,30 +1,64 @@
-#ifndef MYHTTP_H
-#define MYHTTP_H
+#include <stdio.h>
 
-#include <sys/types.h>
-typedef struct 
-{
-	enum http_comm {GET, PUT}	command;
-	char				uri[80];
-	char				host[80];
+#define MAX_FIELDLEN 1024
+
+#define HEADER_BUF 10*1024
+#define CRLF "\r\n"
+
+/* sprintf format helpers */
+#define STARTLINEFMT "%s %s HTTP/1.1\r\n"
+#define SHEADERFMT "%s: %s\r\n"
+#define IHEADERFMT "%s: %ld\r\n"
+
+/* HTTP type code definitions */
+#define OK 200
+#define NFOUND 404
+#define CREATED 201
+#define OTHER -1
+
+typedef int response_type;
+
+/* Request type enum */
+typedef enum {
+	GET,
+	PUT
+} request_type;
+
+/* Response struct */
+typedef struct {
+	int				fd;
+	response_type	type;
+	char			content_type[MAX_FIELDLEN];
+	unsigned long	payload_len;
+} http_response;
+
+/* Requst struct */
+typedef struct {
+	request_type	type;
+	char			uri[MAX_FIELDLEN];
+	char			host[MAX_FIELDLEN];
+	char			iam[MAX_FIELDLEN];
+	unsigned long	payload_len;
+	char 			content_type[MAX_FIELDLEN];
 	int				close;
-	char				iam[80];
-	ssize_t				length;
-} Http_info;
+} http_request;
 
-int parse_startline(char *line, Http_info *specs);
-int parse_header(char *line, Http_info *specs);
-int process_get(int sockfd, Http_info *specs);
-int process_put(int sockfd, Http_info *specs, char *buf, ssize_t rem);
+/* Return HTTP response type as a number */
+int
+restype_to_int(http_response *res);
 
+/* Parse the entire response (using above helper functions) and store values into res */
+int
+parse_request(int sock, http_response *res);
 
+/* Generate a HTTP request struct in req */
+void
+generate_response(response_type type, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req);
 
-#include "npbserver.h"
+/* Write response payload into local file stream from socket */
+int
+store_request_payload(FILE* outfile, http_response *res, size_t *remaining);
 
-#define REPLY_404 "HTTP/1.1 404 Not Found\r\nContent-Length: 3\r\n\r\n404\0"
-#define REPLY_200 "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n200\0"
-#define REPLY_201 "HTTP/1.1 201 Created\r\nContent-Length: 3\r\n\r\n201\0"
-#define REPLY_400 "HTTP/1.1 400 Bad request\r\nContent-Length: 3\r\n\r\n400\0"
-#define REPLY_200F "HTTP/1.1 200 OK\r\nContent-Length: %zi\r\nContent-Type: %s\r\n\r\n"
-
-#endif
+/* Create header string and send (with possible payload) to server socket */
+int
+send_response(int fd, http_request *req, FILE *payload);
