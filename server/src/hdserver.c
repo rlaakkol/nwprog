@@ -11,8 +11,11 @@
 #define MAXFD 64
 
 struct cli_struct {
-	my_buf 	buf;
+	my_buf 	*buf;
+	http_request 	*req;
 	int 	fd;
+	int 	state;
+
 }
 
 void
@@ -21,9 +24,29 @@ make_nonblocking(int fd)
     fcntl(fd, F_SETFL, O_NONBLOCK);
 }
 
+my_cli *
+cli_init(int fd)
+{
+	my_cli 	*cli;
+
+	cli = malloc(sizeof(my_cli));
+	cli->buf = buf_init();
+	cli->req = malloc(sizeof(req));
+	cli->state = INIT;
+
+	return cli;
+}
+
 int
 handle_readable(my_cli *cli)
-{
+{	
+	if (cli->state == INIT) {
+		parse_request(cli);
+	} else if (cli->state == SETUP) {
+		files_setup(cli);
+	} else if (cli->state == PUT) {
+		sock_to_file(cli);
+	} else return -1;
 
 	return 0;
 }
@@ -32,6 +55,14 @@ int
 handle_writable(my_cli *cli)
 {
 
+	if (cli->state == SETUP) {
+		files_setup(cli);
+	} else if (cli->state == GET) {
+		file_to_sock(cli);
+	} else if (cli->state == RESPOND) {
+
+	} else return -1;
+	
 	return 0;
 }
 

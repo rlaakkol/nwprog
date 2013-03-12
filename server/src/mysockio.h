@@ -5,7 +5,7 @@
 #define BUF_SIZE 4*1024
 
 typedef struct {
-	char 	buf[BUF_SIZE];
+	char 	*buf;
 	char 	*readptr;
 	int 	buffered;
 } my_buf;

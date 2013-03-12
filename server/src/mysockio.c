@@ -90,6 +90,7 @@ my_buf
 
 	buf = malloc(sizeof(my_buf));
 
+	buf->buf = malloc(BUF_SIZE);
 	buf->buffered = 0;
 	buf->readptr = buf->buf;
 
