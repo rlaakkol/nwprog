@@ -132,16 +132,19 @@ main(int argc, char **argv)
 	int	i;
 	pid_t	pid;
 
-	int		  listenfd, connfd, facility;
+	int			fd, listenfd, connfd, facility;
 	pid_t		  childpid;
 	void		  sig_chld(int), sig_int(int), web_child(int);
 	socklen_t	  clilen, addrlen;
 	struct sockaddr	  *cliaddr;
+	my_cli 			*current;
 	GSList 			*clients, *next;
+	fd_set 	readset, writeset;
 
 	daemonize();
 
 	clients = NULL;
+
 
 	facility = LOG_LOCAL7;
 	// open syslog
@@ -155,6 +158,8 @@ main(int argc, char **argv)
 		return -1;
 	}
 
+	make_nonblocking(listenfd);
+
 	// addrlen may be variable, because we may have AF_INET or AF_INET6
 	// sockets
 	cliaddr = malloc(addrlen);
@@ -164,10 +169,49 @@ main(int argc, char **argv)
 	}
 
 	// set special signal handlers
-	signal(SIGCHLD, sig_chld); // defined in common.c
+	//signal(SIGCHLD, sig_chld); // defined in common.c
 	signal(SIGINT, sig_int);
 
 	for ( ; ; ) {
+
+		maxfd = listenfd;
+
+		FD_ZERO(&readset);
+		FD_ZERO(&writeset);
+
+		FD_SET(listenfd, &readset);
+
+		next = clients;
+		while (next != NULL) {
+			current = next->data;
+			maxfd = current->fd > maxfd ? current->fd : maxfd;
+			FD_SET(current->fd, &readset);
+			if(current->state == GET || current->state == RESPONSE) {
+				FD_SET(current->fd, &writeset);
+			}
+
+		}
+
+
+if (select(maxfd+1, &readset, &writeset, &exset, NULL) < 0) {
+            perror("select");
+            return;
+        }
+
+        if (FD_ISSET(listener, &readset)) {
+        	clilen = addrlen;
+            connfd = accept(listenfd, cliaddr, &clilen);
+            if (connfd < 0) {
+                perror("accept");
+            } else if (connfd > FD_SETSIZE) {
+                close(connfd);
+            } else {
+                make_nonblocking(connfd);
+                g_slist_append(clients, cli_init(connfd));
+                
+            }
+        }
+
 		clilen = addrlen;
 		if ( (connfd = accept(listenfd, cliaddr, &clilen)) < 0) {
 			if (errno == EINTR)
@@ -186,7 +230,14 @@ main(int argc, char **argv)
 		close(connfd);			/* parent closes connected socket */
 		next = clients;
 		while (next != NULL) {
-			if (next->data->buffered)
+			current = next->data;
+			if (current->buf->buffered > 0 || FD_ISSET(current->fd, &readset)) {
+				handle_readable(current);
+				continue;
+			}
+			if (FD_ISSET(current->fd, &writeset)) {
+				handle_writable(current);
+			}
 			next = g_slist_next(next);
 		}
 
