@@ -13,6 +13,7 @@
 struct cli_struct {
 	my_buf 	*buf;
 	http_request 	*req;
+	char 	linebuf[MAXLINE];
 	int 	fd;
 	int 	state;
 
@@ -32,6 +33,7 @@ cli_init(int fd)
 	cli = malloc(sizeof(my_cli));
 	cli->buf = buf_init();
 	cli->req = malloc(sizeof(req));
+	strcpy("\0", cli->linebuf);
 	cli->state = INIT;
 
 	return cli;
@@ -212,30 +214,28 @@ if (select(maxfd+1, &readset, &writeset, &exset, NULL) < 0) {
             }
         }
 
-		clilen = addrlen;
-		if ( (connfd = accept(listenfd, cliaddr, &clilen)) < 0) {
-			if (errno == EINTR)
-				continue;		/* back to for() */
-			else {
-				syslog(LOG_ERR, "accept error");
-				return -1;
-			}
-		}
+		// clilen = addrlen;
+		// if ( (connfd = accept(listenfd, cliaddr, &clilen)) < 0) {
+		// 	if (errno == EINTR)
+		// 		continue;		/* back to for() */
+		// 	else {
+		// 		syslog(LOG_ERR, "accept error");
+		// 		return -1;
+		// 	}
+		// }
 
-		if ( (childpid = fork()) == 0) {	/* child process */
-			close(listenfd);	/* close listening socket */
-			web_child(connfd);	/* process request */
-			exit(0);
-		}
-		close(connfd);			/* parent closes connected socket */
+		// if ( (childpid = fork()) == 0) {	/* child process */
+		// 	close(listenfd);	/* close listening socket */
+		// 	web_child(connfd);	/* process request */
+		// 	exit(0);
+		// }
+		// close(connfd);			/* parent closes connected socket */
 		next = clients;
 		while (next != NULL) {
 			current = next->data;
 			if (current->buf->buffered > 0 || FD_ISSET(current->fd, &readset)) {
 				handle_readable(current);
-				continue;
-			}
-			if (FD_ISSET(current->fd, &writeset)) {
+			} else if (FD_ISSET(current->fd, &writeset)) {
 				handle_writable(current);
 			}
 			next = g_slist_next(next);

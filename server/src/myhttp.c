@@ -13,6 +13,35 @@ restype_to_int(http_response *res)
 	return res->type;
 }
 
+int
+parse_url(char *url, char *iam, char *host, char *service, char *path)
+{
+        char bufa[512], bufb[512], bufc[512], scheme[16];
+
+        if (sscanf(url, "%64[^:]://%512s", scheme, bufa) < 0) {
+                return -1;
+        }
+
+
+        if (sscanf(bufa, "%64[^@]@%512s", iam, bufb) < 2) {
+                strcpy(iam, "none");
+                strcpy(bufb, bufa);
+        }
+
+        if (sscanf(bufb, "%512[^/]/%256s", bufc, path) < 2){
+                return -1;
+        }
+        if (sscanf(bufc, "%64[^:]:%64s", host, service) < 2) {
+                strcpy(service, "80");
+                strcpy(host, bufc);
+        }
+
+        return 0;
+
+}
+
+
+
 /* Generate a HTTP request struct in req */
 void
 generate_response(response_type type, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req)
@@ -48,25 +77,26 @@ generate_response(response_type type, const char *host, const char *iam, const c
 
 /* Parse the first line of a HTTP response (store the response type)*/
 int
-parse_response_startline(char *line, http_response *res)
+parse_request_startline(char *line, http_request *req)
 {
-	int 	code;
-	char 	http_ver[10];
+	char 	type[10], uri[64], http_ver[10];
 
-	if (sscanf(line, "%8s %d", http_ver, &code) != 2) {
-		fprintf(stderr, "Malformed response startline!\n");
+	if (sscanf(line, "%s %s %s", type, uri, http_ver) != 3) {
+		fprintf(stderr, "Malformed startline!\n");
 		res->type = OTHER;
 		return -1;
 	}
 
-	res->type = code;
+	if (strncasecmp("GET", type, 3) == 0) req->type = GET;
+	else if (strncasecmp("PUT", type, 3) == 0) req->type = PUT;
+	else return -1;
 
 	return 0;
 }
 
 /* Parse a single line of a HTTP header (ends with "\r\n\0") */
 int
-parse_response_headerline(char *line, http_response *res)
+parse_request_headerline(char *line, http_request *req)
 {
 /*	size_t	len; */
 	char		field[MAX_FIELDLEN], value[MAX_FIELDLEN];
@@ -76,7 +106,8 @@ parse_response_headerline(char *line, http_response *res)
 
 	if (strncmp(line, "\r\n", 2) == 0) return 1;	/* End of header */
 	/* Store fieldame and value strings into different buffers */
-	sscanf(line, "%[^:]:%s", field, value);
+	
+	if (sscanf(line, "%[^:]:%s", field, value) != 2) return -1;
 
 
 	if (strcasecmp(field, "content-length") == 0) {
@@ -86,12 +117,15 @@ parse_response_headerline(char *line, http_response *res)
 
 			return -1;
 		} else {
-			res->payload_len = len;
+			req->payload_len = len;
 			fprintf(stdout, "Content-Length: %ld\n", len);
 		}
 	} else if (strcasecmp(field, "content-type") == 0) {
 		/* Store content type */
-		strcpy(res->content_type, value);
+		strcpy(req->content_type, value);
+	} else if (strcasecmp(field, "iam") == 0) {
+
+		strcpy(req->iam, value);
 	}
 
 
@@ -100,39 +134,40 @@ parse_response_headerline(char *line, http_response *res)
 
 /* Parse the entire response (using above helper functions) and store values into res */
 int
-parse_response(int sock, http_response *res)
+parse_request(my_cli *cli)
 {
 	char			line[MAX_FIELDLEN];
 	unsigned int	n;
 	int				first, ret;
 
-	printf("Parsing response\n");
-	res->fd = sock;
-	first = 1;
+	printf("Parsing request\n");
+	first = strlen(cli->req->uri) > 0 ? 0 : 1;
 
-	buf_init();
+
 	
 	/* Start loop */
 	while(1) {
-		n = 0;
+		n = strlen(cli->linebuf);
 		do {
 			/* Read socket one byte at a time until CRLF (end of line) */
-			if (readn_buf(sock, line + n, 1) < 0) {
+			if (readn_buf(sock, cli->linebuf + n, 1) < 0) {
 				fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
 				return EXIT_FAILURE;
 			}
 /*			printf("%c", line[n]); */
 			n++;
-		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, line + n - 2, 2) != 0));
+		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, cli->linebuf + n - 2, 2) != 0));
 			/* Terminate line */
-			line[n] = '\0';
+			(cli->linebuf)[n] = '\0';
 		if (first) {
 			/* If first line, parse accordingly */
-			if (parse_response_startline(line, res) < 0) return EXIT_FAILURE;
+			if (parse_request_startline(cli->linebuf, res) < 0) return EXIT_FAILURE;
 			first = 0;
 			/* Else parse as headerline, return value from parser means end of header */
-		} else if ((ret = parse_response_headerline(line, res)) == 1) break;
+		} else if ((ret = parse_request_headerline(cli->linebuf, res)) == 1) break;
 		else if (ret < 0) return EXIT_FAILURE;
+
+		strcpy("\0", cli->linebuf);
 	}
 
 	return EXIT_SUCCESS;
