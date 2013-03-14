@@ -1,3 +1,8 @@
-
-#define INIT 0
-#define PARSING 1
+typedef enum {
+	INIT,
+	SETUP,
+	PUT,
+	GET,
+	RESPOND,
+	FINISHED
+} cli_state;

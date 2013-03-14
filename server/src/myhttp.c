@@ -13,38 +13,47 @@ restype_to_int(http_response *res)
 	return res->type;
 }
 
-int
-parse_url(char *url, char *iam, char *host, char *service, char *path)
+// int
+// parse_uri(char *uri, char *path)
+// {
+//         char bufa[512], bufb[512], scheme[16], host[256];
+//         int ret;
+
+//         if (sscanf(uri, "%64[^:]://%512s", scheme, bufa) < 1) {
+//                 return -1;
+//         }
+
+//         if ((ret = sscanf(bufa, "%512[^/]/%256s", bufb, path)) < 1){
+//                 return -1;
+//         } else if (ret < 2) return 0;
+
+//         strcpy(host, bufb)
+
+//         return 0;
+
+// }
+
+char *
+parse_uri(char *uri)
 {
-        char bufa[512], bufb[512], bufc[512], scheme[16];
+	char	*ptr1, *path;
 
-        if (sscanf(url, "%64[^:]://%512s", scheme, bufa) < 0) {
-                return -1;
-        }
-
-
-        if (sscanf(bufa, "%64[^@]@%512s", iam, bufb) < 2) {
-                strcpy(iam, "none");
-                strcpy(bufb, bufa);
-        }
-
-        if (sscanf(bufb, "%512[^/]/%256s", bufc, path) < 2){
-                return -1;
-        }
-        if (sscanf(bufc, "%64[^:]:%64s", host, service) < 2) {
-                strcpy(service, "80");
-                strcpy(host, bufc);
-        }
-
-        return 0;
-
+	if (strlen(uri) > 6 && (!strncmp(uri, "http://", 7) || !strncmp(uri, "https://", 8))) {
+		if ((ptr1 = strchr(uri, '/')) == NULL) {
+			syslog(LOG_INFO, "Invalid path");
+			return NULL;
+		}
+		path = ptr1+1;
+	}
+	else path = uri+1;
+	return path;
 }
 
 
 
 /* Generate a HTTP request struct in req */
 void
-generate_response(response_type type, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req)
+generate_response(my_cli *cli, response_type type, content_length)
 {
 	struct stat 	file_info;
 
@@ -72,6 +81,19 @@ generate_response(response_type type, const char *host, const char *iam, const c
 	} else {
 		req->payload_len = 0;
 	}
+
+}
+
+int
+files_setup(my_cli *cli)
+{
+	http_request *req;
+
+	req = cli->req;
+
+
+	cli->state = req->type == PUT ? PUT : GET;
+	return 0;
 
 }
 
@@ -169,6 +191,8 @@ parse_request(my_cli *cli)
 
 		strcpy("\0", cli->linebuf);
 	}
+
+	cli->state = SETUP;
 
 	return EXIT_SUCCESS;
 }

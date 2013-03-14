@@ -13,9 +13,14 @@
 struct cli_struct {
 	my_buf 	*buf;
 	http_request 	*req;
+	http_response 	*res;
 	char 	linebuf[MAXLINE];
 	int 	fd;
-	int 	state;
+	int 	localfd;
+	cli_state 	state;
+	size_t 	received;
+	size_t 	written;
+	char 	filebuf[BUF_SIZE];
 
 }
 
@@ -33,8 +38,11 @@ cli_init(int fd)
 	cli = malloc(sizeof(my_cli));
 	cli->buf = buf_init();
 	cli->req = malloc(sizeof(req));
+	cli->res = malloc(sizeof(res));
 	strcpy("\0", cli->linebuf);
 	cli->state = INIT;
+	cli->received = 0;
+	cli->written = 0;
 
 	return cli;
 }
@@ -62,7 +70,7 @@ handle_writable(my_cli *cli)
 	} else if (cli->state == GET) {
 		file_to_sock(cli);
 	} else if (cli->state == RESPOND) {
-
+		send_response(cli)
 	} else return -1;
 	
 	return 0;
@@ -195,23 +203,23 @@ main(int argc, char **argv)
 		}
 
 
-if (select(maxfd+1, &readset, &writeset, &exset, NULL) < 0) {
-            perror("select");
-            return;
-        }
+		if (select(maxfd+1, &readset, &writeset, &exset, NULL) < 0) {
+			perror("select");
+			return;
+		}
 
-        if (FD_ISSET(listener, &readset)) {
-        	clilen = addrlen;
-            connfd = accept(listenfd, cliaddr, &clilen);
-            if (connfd < 0) {
-                perror("accept");
-            } else if (connfd > FD_SETSIZE) {
-                close(connfd);
-            } else {
-                make_nonblocking(connfd);
-                g_slist_append(clients, cli_init(connfd));
-                
-            }
+		if (FD_ISSET(listener, &readset)) {
+			clilen = addrlen;
+			connfd = accept(listenfd, cliaddr, &clilen);
+			if (connfd < 0) {
+				perror("accept");
+			} else if (connfd > FD_SETSIZE) {
+				close(connfd);
+			} else {
+				make_nonblocking(connfd);
+				g_slist_append(clients, cli_init(connfd));
+
+			}
         }
 
 		// clilen = addrlen;
@@ -233,10 +241,15 @@ if (select(maxfd+1, &readset, &writeset, &exset, NULL) < 0) {
 		next = clients;
 		while (next != NULL) {
 			current = next->data;
-			if (current->buf->buffered > 0 || FD_ISSET(current->fd, &readset)) {
+			if ((current->state == INIT || current->state == SETUP || current->state == PUT) && (current->buf->buffered > 0 || FD_ISSET(current->fd, &readset)) {
 				handle_readable(current);
-			} else if (FD_ISSET(current->fd, &writeset)) {
+			} else if ((current->state == SETUP || current->state == PUT) && FD_ISSET(current->fd, &writeset)) {
 				handle_writable(current);
+			} else {
+				next = g_slist_next(next);
+				g_slist_remove(clients, current);
+				cli_del(current);
+				continue;
 			}
 			next = g_slist_next(next);
 		}
