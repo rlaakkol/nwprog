@@ -20,18 +20,24 @@ restype_to_int(http_response *res)
 // int
 // parse_uri(char *uri, char *path)
 // {
-//         char bufa[512], bufb[512], scheme[16], host[256];
+//         char bufa[512], bufb[512], scheme[16], host[256], *next;
 //         int ret;
 
-//         if (sscanf(uri, "%64[^:]://%512s", scheme, bufa) < 1) {
+//         if ((ret = sscanf(uri, "%64[^:]://%512s", scheme, bufa)) < 1) {
 //                 return -1;
+//         } else if (ret < 2) next = uri;
+//         else next = bufa;
+
+//         printf("parsing: %s\n", next);
+
+//         if ((ret = sscanf(next, "%512[^/]/%256s", bufb, path)) < 1){
+//                 return -1;
+//         } else if (ret < 2) {
+//         	strcpy(path, next);
+//         	return 0;
 //         }
 
-//         if ((ret = sscanf(bufa, "%512[^/]/%256s", bufb, path)) < 1){
-//                 return -1;
-//         } else if (ret < 2) return 0;
-
-//         strcpy(host, bufb)
+//         strcpy(host, bufb);
 
 //         return 0;
 
@@ -42,14 +48,13 @@ parse_uri(char *uri)
 {
 	char	*ptr1, *path;
 
-	if (strlen(uri) > 6 && (!strncmp(uri, "http://", 7) || !strncmp(uri, "https://", 8))) {
-		if ((ptr1 = strchr(uri, '/')) == NULL) {
-			syslog(LOG_INFO, "Invalid path");
-			return NULL;
-		}
-		path = ptr1+1;
+
+	if ((ptr1 = strchr(uri, '/')) == NULL) {
+		syslog(LOG_INFO, "Invalid path");
+		return NULL;
 	}
-	else path = uri+1;
+	path = ptr1+1;
+
 	return path;
 }
 
@@ -113,7 +118,9 @@ files_setup(my_cli *cli)
 		return -1;
 	}
 
+
 	if (req->type == REQ_GET) {
+		flock(cli->localfd, LOCK_UN);
 		fstat(cli->localfd, &file_info);
 		generate_response(cli, 200, "text/plain", (unsigned long)file_info.st_size);
 	}
@@ -129,6 +136,8 @@ parse_request_startline(char *line, http_request *req)
 {
 	char 	type[10], uri[64], http_ver[10];
 
+	printf("Parsing startline: %s", line);
+
 	if (sscanf(line, "%s %s %s", type, uri, http_ver) != 3) {
 		fprintf(stderr, "Malformed startline!\n");
 		return -1;
@@ -137,6 +146,8 @@ parse_request_startline(char *line, http_request *req)
 	if (strncasecmp("GET", type, 3) == 0) req->type = REQ_GET;
 	else if (strncasecmp("PUT", type, 3) == 0) req->type = REQ_PUT;
 	else return -1;
+
+	strncpy(req->uri, uri, 64);
 
 	return 0;
 }
@@ -150,7 +161,7 @@ parse_request_headerline(char *line, http_request *req)
 	long int 	len;
 
 
-
+	printf("Parsing headerline: %s\n", line);
 	if (strncmp(line, "\r\n", 2) == 0) return 1;	/* End of header */
 	/* Store fieldame and value strings into different buffers */
 	
@@ -208,7 +219,7 @@ parse_request(my_cli *cli)
 				} 
 				return EXIT_FAILURE;
 			}
-			printf("%s\n", cli->linebuf); 
+			//printf("%s\n", cli->linebuf); 
 			n++;
 		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, cli->linebuf + n - 2, 2) != 0));
 			/* Terminate line */
@@ -253,19 +264,38 @@ sock_to_file(my_cli *cli)
 
 	if (remaining > 0) {
 		if (cli->written_bytes == cli->read_bytes) {
-			rbytes = readn_buf(cli->buf, cli->fd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE);
+			if ((rbytes = readn_buf(cli->buf, cli->fd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE)) < 0) {
+				if (errno != EWOULDBLOCK) {
+					generate_response(cli, 500, "", 0);
+					cli->state = ST_RESPOND;
+					return -1;
+				}
+				return 0;
+			}
 			cli->read_bytes += rbytes;
 		}
 		else rbytes = cli->read_bytes - cli->written_bytes;
+
+		printf("writing %d bytes: %s\n", rbytes, cli->filebuf);
 
 		if ((wbytes = write(cli->localfd, cli->filebuf, rbytes)) < rbytes) {
 			memmove(cli->filebuf, cli->filebuf + wbytes, rbytes - wbytes);
 		}
 
-		if (wbytes > 0) cli->written_bytes += wbytes;
-	} else {
+		if (wbytes > 0) {
+			cli->written_bytes += wbytes;
+			remaining -= wbytes;
+		}
+	} 
+	if (remaining == 0) {
+		flock(cli->localfd, LOCK_UN);
+		close(cli->localfd);
+		generate_response(cli, CREATED, "", 0);
 		cli->state = ST_RESPOND;
+		
 	}
+
+	
 	
 	return EXIT_SUCCESS;
 }
@@ -277,22 +307,44 @@ file_to_sock(my_cli *cli)
 	int		rbytes, wbytes;
 
 
-	remaining =  cli->req->payload_len - cli->written_bytes;
+
+	printf("Sending file as payload\n");
+
+	remaining =  cli->res->payload_len - cli->written_bytes;
+
+	printf("remaining: %zd\n", remaining);
 
 	if (remaining > 0) {
 		if (cli->written_bytes == cli->read_bytes) {
-			rbytes = read(cli->localfd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE);
+			if ((rbytes = read(cli->localfd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE)) < 0) {
+				printf("read failed\n");
+				if (errno != EWOULDBLOCK) {
+					generate_response(cli, 500, "", 0);
+					cli->state = ST_RESPOND;
+					return -1;
+
+				}
+				
+				return 0;
+
+			}
 			cli->read_bytes += rbytes;
 		}
 		else rbytes = cli->read_bytes - cli->written_bytes;
+
+		printf("writing %d bytes: %s\n", rbytes, cli->filebuf);
 
 		if ((wbytes = write(cli->fd, cli->filebuf, rbytes)) < rbytes) {
 			memmove(cli->filebuf, cli->filebuf + wbytes, rbytes - wbytes);
 		}
 
-		if (wbytes > 0) cli->written_bytes += wbytes;
-	} else {
-		cli->state = ST_RESPOND;
+		if (wbytes > 0) {
+			cli->written_bytes += wbytes;
+			remaining -= wbytes;
+		}
+	} 
+	if (remaining == 0) {
+		cli->state = ST_FINISHED;
 	}
 	
 	return EXIT_SUCCESS;
@@ -305,7 +357,7 @@ send_response(my_cli *cli)
 	char 	header[HEADER_BUF], rtype[32];
 	http_response 	*res;
 
-	fprintf(stdout, "Sending responset\n");
+	printf("Sending responset\n");
 	res = cli->res;
 
 	switch (res->type) {

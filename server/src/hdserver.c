@@ -190,6 +190,8 @@ main(int argc, char **argv)
 		return -1;
 	}
 
+	printf("ST_INIT=%d\nST_SETUP=%d\nST_PUT=%d\nST_GET=%d\nST_RESPOND=%d\nST_FINISHED=%d\n", ST_INIT, ST_SETUP, ST_PUT, ST_GET, ST_RESPOND, ST_FINISHED);
+
 	// set special signal handlers
 	//signal(SIGCHLD, sig_chld); // defined in common.c
 	signal(SIGINT, sig_int);
@@ -260,8 +262,9 @@ main(int argc, char **argv)
 		while (next != NULL) {
 			current = next->data;
 			fail = 0;
+			//printf("Client state: %d\n", current->state);
 			if (current->buf->buffered > 0 || FD_ISSET(current->fd, &readset)) {
-				//printf("Client sends data!\n");
+				
 				if (current->state == ST_INIT) {
 					fail = parse_request(current);
 				} else if (current->state == ST_SETUP) {
@@ -277,7 +280,7 @@ main(int argc, char **argv)
 				} else if (current->state == ST_RESPOND) {
 					fail = send_response(current);
 				}
-			} else if (fail || current->state == ST_FINISHED) {
+			} else if ((fail && current->state != ST_RESPOND) || current->state == ST_FINISHED) {
 				printf("Removing client\n");
 				next = g_slist_next(next);
 				clients = g_slist_remove(clients, current);
