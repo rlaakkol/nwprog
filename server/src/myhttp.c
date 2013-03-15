@@ -2,6 +2,10 @@
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <syslog.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/file.h>
 
 #include "myhttp.h"
 #include "mysockio.h"
@@ -53,46 +57,68 @@ parse_uri(char *uri)
 
 /* Generate a HTTP request struct in req */
 void
-generate_response(my_cli *cli, response_type type, content_length)
+generate_response(my_cli *cli, response_type type, char* content_type ,unsigned long content_length)
 {
-	struct stat 	file_info;
 
-	fprintf(stdout, "Generating %s-request\n", type == GET ? "GET" : "PUT");
+	http_response 	*res;
 
+	fprintf(stdout, "Generating response\n");
+
+	res = cli->res;
 	/* Fill the fields */
-	req->type = type;
-	req->uri[0] = '\0';
-	strncat(req->uri, "/", 1);
-	strncat(req->uri, uri, MAX_FIELDLEN-strlen(req->uri)-1);
-	req->host[0] = '\0';
-	strncat(req->host, host, MAX_FIELDLEN-1);
-	req->iam[0] = '\0';
-	strncat(req->iam, iam, MAX_FIELDLEN-1);
-	req->close = close;
-	req->content_type[0] = '\0';
-	if (req->type == PUT && req->content_type != NULL) {
-		strncat(req->content_type, content_type, MAX_FIELDLEN-1);
-	}
+	res->type = type;
 
-	if (payload_filename != NULL) {
-		/* If there is payload in the request, count the size */
-		stat(payload_filename, &file_info);
-		req->payload_len = (unsigned long) file_info.st_size;
-	} else {
-		req->payload_len = 0;
-	}
+	res->content_type[0] = '\0';
+	strncat(res->content_type, content_type, MAX_FIELDLEN-1);
+
+
+
+	res->payload_len = content_length;
+
 
 }
 
 int
 files_setup(my_cli *cli)
 {
+	int 		flags;
+	char 		*path;
+	struct stat 	file_info;
 	http_request *req;
+
+
 
 	req = cli->req;
 
+	path = parse_uri(req->uri);
 
-	cli->state = req->type == PUT ? PUT : GET;
+	printf("Setting up file %s\n", path);
+	
+	flags = req->type == REQ_PUT ? O_WRONLY | O_NONBLOCK | O_CREAT : O_RDONLY | O_NONBLOCK;
+
+	if ((cli->localfd = open(path, flags)) < 0) {
+		if (errno == EACCES) generate_response(cli, 400, "", 0);
+		else if (errno == ENOENT) generate_response(cli, 404, "", 0);
+		else generate_response(cli, 500, "", 0);
+		cli->state = ST_RESPOND;
+		return -1;
+	}
+
+	if (flock(cli->localfd, LOCK_EX | LOCK_NB) < 0) {
+		if (errno == EWOULDBLOCK) {
+			generate_response(cli, 409, "", 0);
+			cli->state = ST_RESPOND;		
+		}
+		close(cli->localfd);
+		return -1;
+	}
+
+	if (req->type == REQ_GET) {
+		fstat(cli->localfd, &file_info);
+		generate_response(cli, 200, "text/plain", (unsigned long)file_info.st_size);
+	}
+
+	cli->state = req->type == REQ_PUT ? ST_PUT : ST_RESPOND;
 	return 0;
 
 }
@@ -105,12 +131,11 @@ parse_request_startline(char *line, http_request *req)
 
 	if (sscanf(line, "%s %s %s", type, uri, http_ver) != 3) {
 		fprintf(stderr, "Malformed startline!\n");
-		res->type = OTHER;
 		return -1;
 	}
 
-	if (strncasecmp("GET", type, 3) == 0) req->type = GET;
-	else if (strncasecmp("PUT", type, 3) == 0) req->type = PUT;
+	if (strncasecmp("GET", type, 3) == 0) req->type = REQ_GET;
+	else if (strncasecmp("PUT", type, 3) == 0) req->type = REQ_PUT;
 	else return -1;
 
 	return 0;
@@ -158,12 +183,15 @@ parse_request_headerline(char *line, http_request *req)
 int
 parse_request(my_cli *cli)
 {
-	char			line[MAX_FIELDLEN];
 	unsigned int	n;
-	int				first, ret;
+	int				first, fail, ret;
+	http_request 	*req;
 
 	printf("Parsing request\n");
 	first = strlen(cli->req->uri) > 0 ? 0 : 1;
+	fail = 0;
+
+	req = cli->req;
 
 
 	
@@ -171,89 +199,147 @@ parse_request(my_cli *cli)
 	while(1) {
 		n = strlen(cli->linebuf);
 		do {
-			/* Read socket one byte at a time until CRLF (end of line) */
-			if (readn_buf(sock, cli->linebuf + n, 1) < 0) {
+			/* Read socket buffer one byte at a time until CRLF (end of line) */
+			if (readn_buf(cli->buf, cli->fd, cli->linebuf + n, 1) < 0) {
 				fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
+				if (errno == EWOULDBLOCK) {
+					cli->linebuf[n+1] = '\0';
+					return EXIT_SUCCESS;	
+				} 
 				return EXIT_FAILURE;
 			}
-/*			printf("%c", line[n]); */
+			printf("%s\n", cli->linebuf); 
 			n++;
 		} while (n < MAX_FIELDLEN-1 && (n < 2 || strncmp(CRLF, cli->linebuf + n - 2, 2) != 0));
 			/* Terminate line */
 			(cli->linebuf)[n] = '\0';
 		if (first) {
 			/* If first line, parse accordingly */
-			if (parse_request_startline(cli->linebuf, res) < 0) return EXIT_FAILURE;
+			if (parse_request_startline(cli->linebuf, req) < 0) {
+				fail = 1;
+				break;
+			}
 			first = 0;
 			/* Else parse as headerline, return value from parser means end of header */
-		} else if ((ret = parse_request_headerline(cli->linebuf, res)) == 1) break;
-		else if (ret < 0) return EXIT_FAILURE;
+		} else if ((ret = parse_request_headerline(cli->linebuf, req)) == 1) break;
+		else if (ret < 0) {
+			fail = 1;
+			break;
+		}
 
-		strcpy("\0", cli->linebuf);
+		(cli->linebuf)[0] = '\0';
 	}
 
-	cli->state = SETUP;
+	if (fail) {
+		generate_response(cli, 400, "", 0);
+		cli->state = ST_RESPOND;
+		return EXIT_FAILURE;
+	}
+
+	printf("Parsing complete\n");
+	cli->state = ST_SETUP;
 
 	return EXIT_SUCCESS;
 }
 
 /* Write response payload into local file stream from socket */
 int
-store_response_payload(FILE *outfile, http_response *res, size_t *remaining)
+sock_to_file(my_cli *cli)
 {
-	size_t	next;
+	size_t	remaining;
 	int		rbytes, wbytes;
-	char	buf[BUF_SIZE];
 
+	remaining =  cli->req->payload_len - cli->written_bytes;
 
-	*remaining = res->payload_len;
-
-	while (*remaining) {
-		/* Calculate maximum read amount and read from socket */
-		next = *remaining < BUF_SIZE ? *remaining : BUF_SIZE;
-		rbytes = readn_buf(res->fd, buf, next);
-		if (rbytes < 1) {
-			/* If read returns 0 or less, return */
-			return rbytes;
+	if (remaining > 0) {
+		if (cli->written_bytes == cli->read_bytes) {
+			rbytes = readn_buf(cli->buf, cli->fd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE);
+			cli->read_bytes += rbytes;
 		}
-		/* Write into file stream */
-		if ((wbytes = fwrite(buf, 1, rbytes, outfile)) < rbytes) {
-			fprintf(stderr, "Error writing local file: %s\n", strerror(errno));
-			return EXIT_FAILURE;
+		else rbytes = cli->read_bytes - cli->written_bytes;
+
+		if ((wbytes = write(cli->localfd, cli->filebuf, rbytes)) < rbytes) {
+			memmove(cli->filebuf, cli->filebuf + wbytes, rbytes - wbytes);
 		}
-		*remaining -= rbytes;
+
+		if (wbytes > 0) cli->written_bytes += wbytes;
+	} else {
+		cli->state = ST_RESPOND;
 	}
+	
+	return EXIT_SUCCESS;
+}
+
+int
+file_to_sock(my_cli *cli)
+{
+	size_t	remaining;
+	int		rbytes, wbytes;
+
+
+	remaining =  cli->req->payload_len - cli->written_bytes;
+
+	if (remaining > 0) {
+		if (cli->written_bytes == cli->read_bytes) {
+			rbytes = read(cli->localfd, cli->filebuf, remaining < BUF_SIZE ? remaining : BUF_SIZE);
+			cli->read_bytes += rbytes;
+		}
+		else rbytes = cli->read_bytes - cli->written_bytes;
+
+		if ((wbytes = write(cli->fd, cli->filebuf, rbytes)) < rbytes) {
+			memmove(cli->filebuf, cli->filebuf + wbytes, rbytes - wbytes);
+		}
+
+		if (wbytes > 0) cli->written_bytes += wbytes;
+	} else {
+		cli->state = ST_RESPOND;
+	}
+	
 	return EXIT_SUCCESS;
 }
 
 /* Create header string and send (with possible payload) to server socket */
 int
-send_request(int fd, http_request *req, FILE *payload)
+send_response(my_cli *cli)
 {
-	char 	header[HEADER_BUF], *rtype;
+	char 	header[HEADER_BUF], rtype[32];
+	http_response 	*res;
 
-	fprintf(stdout, "Sending request\n");
+	fprintf(stdout, "Sending responset\n");
+	res = cli->res;
 
-	rtype = malloc(4);
+	switch (res->type) {
+		case OK:
+		strcpy(rtype, "OK");
+		break;
+		case NFOUND:
+		strcpy(rtype, "Not Found");
+		break;
+		case CREATED:
+		strcpy(rtype, "Created");
+		break;
+		case BAD_REQUEST:
+		strcpy(rtype, "Bad Request");
+		break;
+		case CONFLICT:
+		strcpy(rtype, "Conflict");
+		break;
+		case SERV_ERR:
+		strcpy(rtype, "Internal Server Error");
+		break;
+		default:
+		break;
 
-	if (req->type == GET) {
-		strncpy(rtype, "GET", 4);
-	} else {
-		strncpy(rtype, "PUT", 4);
 	}
-	header[0] = '\0';
 
 	/* Format header string */
-	sprintf(header, STARTLINEFMT, rtype, req->uri);
-	sprintf(header + strlen(header), SHEADERFMT, "Host", req->host);
-	if (strcasecmp(req->iam, "none") != 0) {
-		sprintf(header + strlen(header), SHEADERFMT, "Iam", req->iam);
+	sprintf(header, STARTLINEFMT, res->type, rtype);
+
+	if (res->payload_len > 0) {
+		sprintf(header + strlen(header), IHEADERFMT, "Content-Length", res->payload_len);
 	}
-	if (req->payload_len > 0) {
-		sprintf(header + strlen(header), IHEADERFMT, "Content-Length", req->payload_len);
-	}
-	if (strlen(req->content_type) > 0) {
-		sprintf(header + strlen(header), SHEADERFMT, "Content-Type", req->content_type);
+	if (strlen(res->content_type) > 0) {
+		sprintf(header + strlen(header), SHEADERFMT, "Content-Type", res->content_type);
 	}
 	sprintf(header + strlen(header), CRLF);
 
@@ -261,16 +347,17 @@ send_request(int fd, http_request *req, FILE *payload)
 	fprintf(stdout, "Request header:\n---\n%s---\n", header);
 
 	/* Write header to socket */
-	writen(fd, header, strlen(header));
-	if (req->payload_len > 0) {
-		/* If there is payload, write it too */
-		if (write_file(fd, payload, req->payload_len) > 0) {
-			fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
-			return EXIT_FAILURE;
-		}
+	if (write(cli->fd, header, strlen(header)) < 0){
+		if (errno != EWOULDBLOCK) {
+			cli->state = ST_FINISHED;
+		}	
+		return EXIT_FAILURE;
 	}
+	
 
-	free(rtype);
+	if (cli->req->type == REQ_GET && res->type == OK) cli->state = ST_GET;
+	else cli->state = ST_FINISHED;
+
 	return EXIT_SUCCESS;
 
 }
