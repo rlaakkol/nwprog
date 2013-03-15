@@ -136,10 +136,10 @@ main(int argc, char **argv)
 	my_cli 			*current;
 	GSList 			*clients, *next;
 	fd_set 	readset, writeset, exset;
-	char 		wd[128], laddr[128], *lport, c;
+	char 		*wd, wdtemp[128], laddr[128], *lport, c;
 	int 		daemon = 0;
 
-	getcwd(wd, 128);
+	wd = getcwd(wdtemp, 128);
 	laddr[0] = '\0';
 	//
 
@@ -171,6 +171,7 @@ main(int argc, char **argv)
 
 	printf("Working directory is %s\n", wd);
 	if (daemon) daemonize(wd);
+	else chdir(wd);
 
 	// open syslog
 	openlog(argv[0], LOG_PID, LOG_LOCAL7);

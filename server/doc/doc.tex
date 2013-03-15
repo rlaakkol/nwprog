@@ -1,0 +1,141 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8x]{inputenc}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\hypersetup{
+    bookmarks=true,         % show bookmarks bar?
+    unicode=false,          % non-Latin characters in Acrobat’s bookmarks
+    pdftoolbar=true,        % show Acrobat’s toolbar?
+    pdfmenubar=true,        % show Acrobat’s menu?
+    pdffitwindow=false,     % window fit to page when opened
+    pdfstartview={FitH},    % fits the width of the page to the window
+    pdftitle={Documentation},    % title
+    pdfauthor={RL},     % author
+    pdfsubject={Subject},   % subject of the document
+    pdfcreator={Creator},   % creator of the document
+    pdfproducer={Producer}, % producer of the document
+    pdfkeywords={keywords}, % list of keywords
+    pdfnewwindow=true,      % links in new window
+    colorlinks=true,       % false: boxed links; true: colored links
+    linkcolor=black,          % color of internal links
+    citecolor=red,        % color of links to bibliography
+    filecolor=magenta,      % color of file links
+    urlcolor=blue           % color of external links
+}
+
+\usepackage[School of Electrical Engineering]{aaltologo}
+\usepackage{parskip}
+
+\begin{document}
+
+\begin{titlepage}%
+    \begin{flushleft}
+	    \AaltoLogoRandomSmall{1}\\
+S-38.3610 -- Network Programming\\
+Spring 2013\\
+\end{flushleft}
+
+
+    \vspace*{\stretch{1}}
+    \begin{center}
+	    \LARGE{\textbf{HDserver}\\
+	    \large{Documentation}
+    \end{center}
+    \vspace*{\stretch{1}}
+
+    \begin{center}%
+      \begin{tabular}{ll}
+        Riku Lääkkölä & 69896S \\ 
+		riku.laakkola@aalto.fi & \\
+        \end{tabular}
+
+    \end{center}
+  \end{titlepage}
+
+\tableofcontents
+
+\section{Usage Instructions and Disclaimer}
+
+\emph{DISCLAIMER 1:} For this assingment I had two attempts. First, I tried to implement a single-threaded server that uses select() and nonblocking I/O for multiplexing. I managed to get serving GET request to be somewhat functional, but otherwise there seem to be problems. I had to fall back to using code that I wrote for last year's course that forks a child process for each client, which is somewhat more inefficient, but at least the code works...
+
+And now for the instructions: First, the program must be compiled by running {\tt make}. There are no special requirements (at least make runs flawlessly on the course servers) After this, just run the server! Usage as follows:
+
+To start child forking server:
+
+{\tt ./fork_srv <working_directory> <port>}
+
+To start selecting server:
+
+{\tt ./select_srv [-d] [-p <working_directory>] <port>} (\emph{d} for daemonize)
+
+The forking program logs information to LOG_LOCAL7 and the selecting one prints very verbosely to stdout (unless run as daemon).
+
+\section{Overview}
+
+The program serves HTTP GET and PUT requests from clients. The program can handle both IPv4 and IPv6 addresses, and when using DNS names, the user does not need to worry about the IP version.
+
+\subsection{Forking version}
+Internally, the software is divided into four components which are:
+
+\begin{enumerate}
+\item \emph{myhttp}, which generates and parses HTTP messages and reads and writes them from sockets.
+\item \emph{npbserver}, which handels DNS queries, establishing connection to the server and separating the child logic from the main loop.
+\item \emph{main}, which parses the user provided command line arguments, daemonizes the process and handles the main accept loop and forking
+\end{enumerate}
+
+More specifically, the program handles starting itself and processing a GET request from a client in the following manner:
+
+\sloppy
+
+\begin{enumerate}
+\item The listening socket is opened using tcp\_listen in npbserver.
+\item A for-loop is started. The loop blocks at accept until a client connection attempt arrives.
+\item If connection is established successfully, a child is forked, and functionality moves to the web\_child function in npbserver.c.
+\item Data is read from the socket to a buffer until CRLF occurs, and after that, the header is parsed.
+\item If the header is valid, the appropriate function for the request is called.
+\item The process\_get function first writes the appropriate header to the socket and then starts reading the file into a buffer and writing to the socket from the buffer.
+\end{enumerate}
+
+\fussy
+
+
+\emph{DISCLAIMER 2:} The \emph{readn} and \emph{writen} functions which try to write and read exactly n bytes from or into a socket are copied almost directly from the Stevens book examples (also available in lecture materials in Optima). Also the \emph{tcp\_connect}, \emph{daemon\_init} and \emph{tcp\_listen} function is copied almost in full from the lecture examples.
+
+\subsection{Selecting version}
+
+The selecting version tries to handle parallel activity using select and nonblocking I/O. The listening socket is set up in the same way as above, but instead of a blocking accept in the main loop, we have select that returns whenever there are events in sockets we are interested in.
+
+In the beginning the only socket that is set in the fd\_sets provided to select is the listening socket. When select returns, it means that there is a connection attempt. If the connection is successfull, a new client structure is initialized and appended to a linked list of all clients. This list is checked always before select, and relevant clients are added to relevant fd\_sets.
+
+When select returns, the list of clients is checked again in order to see if their respective sockets have become readable or writable during select. If so, depending on the socket status and client state, the appropriate functions are called for processing requests. The processing is fairly similar to the forking version, with the exception that each I/O function is called only once, and if they fail with EWOULDBLOCK, the function returns to the select loop. Also the client struct pointer is passed along, so that the client state may be altered by the functions.
+
+\section{Testing and limitations}
+
+The servers were tested on the nwprog test servers and my home computer. The selecting version does not handle unexpected conditions nicely... The forking version is a bit better.
+
+\section{Specifics}
+
+\begin{enumerate}
+\item The implementation is address family independent. This is accomplished by providing \emph{getaddrinfo} with a \emph{hints} structure that has \emph{ai\_family} of value \emph{AF\_UNSPEC}. This was tested by running the software from my home (IPv6 connectivity) and Otakaari 5 (no IPv6) and some informative statistics printing.
+\item The implementation iterates over all the addresses of the DNS query response (do-while with res switched to res->next at the end) until a connection is successful or all the address options have failed (error or timeout). If no connection is established, an error message is printed and the program exits.
+\item When a host is not connected, the program will try to connect, and after the default timeout period it will print an error message and exit, because there is no route to the host.
+\item When the host has no HTTP server running, the software will print a "Connection refused" message, because the host is not listening on the specified port.
+\item When a server is suddenly terminated, it will close the socket and the client side read (or write) will return 0. The client software keeps track of the remaining bytes (according to the Content-Length value), and reports if the file was not downloaded completely. If the server host is suddenly disconnected from the network, the client side socket operation will block, because the socket is not closed properly. If the server regains connectivity, data transfer may be able to continue.
+\end{enumerate}
+
+\section{Diary}
+
+As I have been on this course before, and the lecture times are a bit difficult in my situation, I haven't attended the lectures. This means that I might not do coursework every week, and in this case I started working on the assignment about two weeks prior to the deadline.
+
+During the first weekend I decided to redo my implementation from last year almost completely (but I did use the code as a reference as in what not to do...). I spent about 8 hours during the weekend creating the interfaces and implementing things.
+
+I only had to use a couple of hours on monday for major debugging, and after that there was already pretty good functionality! The biggest problems seemed to be with parsing text. After realizing to use scanf, everything became a bit easier in that sense.
+
+The socket operations in this phase are fairly straightforward, and the Stevens implementations for readn and writen proved very useful. First I thought about writing my own buffered read interface, but then I realized that the socket buffers already do the same thing, and that reading one character at a time for the header would be just fine.
+
+The most interesting findings I had in the DNS part of the assignment. I found out that for some reason getaddrinfo leaks memory when IPv6 addresses are received, but not with IPv4. This happens because of some malloc that is not freed by freeaddrinfo.
+
+Also the structs involved in getaddrinfo were quite confusing, and printing the address from them regardless of address family was not as straightforward as I thought. Luckily someone had implemented a nice function that does the casting nicely for inet\_ntop! Source is listed in tcp\_connect.c comments.
+
+\end{document}
