@@ -137,7 +137,7 @@ int main(int argc, const char **argv)
 
 	if (argc < 3 || argc > 4)
 	{
-		fprintf(stderr, "usage: npbsrv workdir [ <host> ] <port#>\n");
+		fprintf(stderr, "usage: %s <workdir> [ <host> ] <port#>\n", argv[0]);
                 return -1;
 	}
 	daemon_init(argc, argv, LOG_LOCAL7);
