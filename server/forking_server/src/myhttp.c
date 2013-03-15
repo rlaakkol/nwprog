@@ -208,7 +208,7 @@ int process_get(int sockfd, Http_info *specs)
 		exit(-1);
 	}
 
-	snprintf(buf, MAXLINE, REPLY_200F, (ssize_t) fs.st_size, "text/html");
+	snprintf(buf, MAXLINE, REPLY_200F, (ssize_t) fs.st_size, "text/plain");
 	l = strlen(buf);
 	if (writen(sockfd, buf, l) < l) {
 		syslog(LOG_INFO, "write error 1");
