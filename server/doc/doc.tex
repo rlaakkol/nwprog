@@ -119,7 +119,7 @@ The servers were tested on the nwprog test servers and my home computer, using t
 \begin{enumerate}
 \item The forking version uses separate processes for parallel activity, and the selecting version uses select and nonblocking I/O. If a connected client stops transfer, the I/O functions will block until the default timeout and after that the child exits. The selecting one will have the bad client in the list forever, but the sockets will not appear active in the fd\_sets.
 \item The implementation is address family independent. This is accomplished by providing \emph{getaddrinfo} with a \emph{hints} structure that has \emph{ai\_family} of value \emph{AF\_UNSPEC}. This was tested by running the software from my home (IPv6 connectivity) and Otakaari 5 (no IPv6) and some informative statistics printing.
-\item For some reason, apache benchmark timeouts when stress-testing, so no acceptable high load test results are available. The correct number of bytes seem to be transferred with tens of simultaneous connections with ab.
+\item For some reason, apache benchmark timeouts when stress-testing, so no acceptable high load test results are available. The correct number of bytes seem to be transferred with tens of simultaneous connections with ab. With keepalive enabled, 10 concurrent connections go through, but 100 kills the server.
 \end{enumerate}
 
 \section{Diary}
