@@ -112,30 +112,18 @@ When select returns, the list of clients is checked again in order to see if the
 
 \section{Testing and limitations}
 
-The servers were tested on the nwprog test servers and my home computer. The selecting version does not handle unexpected conditions nicely... The forking version is a bit better.
+The servers were tested on the nwprog test servers and my home computer, using the client from phase 1 and normal web browsers. The selecting version does not handle unexpected conditions nicely... The forking version is a bit better.
 
 \section{Specifics}
 
 \begin{enumerate}
+\item The forking version uses separate processes for parallel activity, and the selecting version uses select and nonblocking I/O. If a connected client stops transfer, the I/O functions will block until the default timeout and after that the child exits. The selecting one will have the bad client in the list forever, but the sockets will not appear active in the fd\_sets.
 \item The implementation is address family independent. This is accomplished by providing \emph{getaddrinfo} with a \emph{hints} structure that has \emph{ai\_family} of value \emph{AF\_UNSPEC}. This was tested by running the software from my home (IPv6 connectivity) and Otakaari 5 (no IPv6) and some informative statistics printing.
-\item The implementation iterates over all the addresses of the DNS query response (do-while with res switched to res->next at the end) until a connection is successful or all the address options have failed (error or timeout). If no connection is established, an error message is printed and the program exits.
-\item When a host is not connected, the program will try to connect, and after the default timeout period it will print an error message and exit, because there is no route to the host.
-\item When the host has no HTTP server running, the software will print a "Connection refused" message, because the host is not listening on the specified port.
-\item When a server is suddenly terminated, it will close the socket and the client side read (or write) will return 0. The client software keeps track of the remaining bytes (according to the Content-Length value), and reports if the file was not downloaded completely. If the server host is suddenly disconnected from the network, the client side socket operation will block, because the socket is not closed properly. If the server regains connectivity, data transfer may be able to continue.
+\item For some reason, apache benchmark timeouts when stress-testing, so no acceptable high load test results are available. The correct number of bytes seem to be transferred with tens of simultaneous connections with ab.
 \end{enumerate}
 
 \section{Diary}
 
-As I have been on this course before, and the lecture times are a bit difficult in my situation, I haven't attended the lectures. This means that I might not do coursework every week, and in this case I started working on the assignment about two weeks prior to the deadline.
 
-During the first weekend I decided to redo my implementation from last year almost completely (but I did use the code as a reference as in what not to do...). I spent about 8 hours during the weekend creating the interfaces and implementing things.
-
-I only had to use a couple of hours on monday for major debugging, and after that there was already pretty good functionality! The biggest problems seemed to be with parsing text. After realizing to use scanf, everything became a bit easier in that sense.
-
-The socket operations in this phase are fairly straightforward, and the Stevens implementations for readn and writen proved very useful. First I thought about writing my own buffered read interface, but then I realized that the socket buffers already do the same thing, and that reading one character at a time for the header would be just fine.
-
-The most interesting findings I had in the DNS part of the assignment. I found out that for some reason getaddrinfo leaks memory when IPv6 addresses are received, but not with IPv4. This happens because of some malloc that is not freed by freeaddrinfo.
-
-Also the structs involved in getaddrinfo were quite confusing, and printing the address from them regardless of address family was not as straightforward as I thought. Luckily someone had implemented a nice function that does the casting nicely for inet\_ntop! Source is listed in tcp\_connect.c comments.
 
 \end{document}
