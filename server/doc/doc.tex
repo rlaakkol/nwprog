@@ -63,13 +63,13 @@ And now for the instructions: First, the program must be compiled by running {\t
 
 To start child forking server:
 
-{\tt ./fork_srv <working_directory> <port>}
+{\tt ./fork\_srv <working\_directory> <port>}
 
 To start selecting server:
 
-{\tt ./select_srv [-d] [-p <working_directory>] <port>} (\emph{d} for daemonize)
+{\tt ./select\_srv [-d] [-p <working\_directory>] <port>} (\emph{d} for daemonize)
 
-The forking program logs information to LOG_LOCAL7 and the selecting one prints very verbosely to stdout (unless run as daemon).
+The forking program logs information to LOG\_LOCAL7 and the selecting one prints very verbosely to stdout (unless run as daemon).
 
 \section{Overview}
 
@@ -117,13 +117,22 @@ The servers were tested on the nwprog test servers and my home computer, using t
 \section{Specifics}
 
 \begin{enumerate}
-\item The forking version uses separate processes for parallel activity, and the selecting version uses select and nonblocking I/O. If a connected client stops transfer, the I/O functions will block until the default timeout and after that the child exits. The selecting one will have the bad client in the list forever, but the sockets will not appear active in the fd\_sets.
+\item The forking version uses separate processes for parallel activity, and the selecting version uses select and nonblocking I/O. If a connected client stops transfer, the I/O functions will block until the default timeout and after that the child exits. The selecting one will maybe have the bad client in the list forever, but the sockets will not appear active in the fd\_sets.
 \item The implementation is address family independent. This is accomplished by providing \emph{getaddrinfo} with a \emph{hints} structure that has \emph{ai\_family} of value \emph{AF\_UNSPEC}. This was tested by running the software from my home (IPv6 connectivity) and Otakaari 5 (no IPv6) and some informative statistics printing.
 \item For some reason, apache benchmark timeouts when stress-testing, so no acceptable high load test results are available. The correct number of bytes seem to be transferred with tens of simultaneous connections with ab. With keepalive enabled, 10 concurrent connections go through, but 100 kills the server.
+\item With abrupt stopping of transmission from client side, both servers seem to function correctly (serving to functional clients still works afterwards), and in both cases resources of malfunctioning clients should be freed after timeouts.
+\item I tested jariliezen's and hhamalai's servers by uploading a 16M file and then downloading the same one and diffing. The first one worked perfectly, but the second one seems to miss about 10 kilobytes from the end of the file when downloading!
 \end{enumerate}
 
 \section{Diary}
+When participating this course last year, I figured I'd take the easy way out and use the simplest method: fork child for each client after connect. This year I aimed for a more sophisticated or elegant or efficient solution, but failed a bit, as the forking version seems to function a bit more reliably.
 
+In the select ad nonblocking I/O way of multiplexing, keeping track of the state of each client and assigning appropriate tasks at the right moments seems to be quite tricky. Also, I have yet to find a way to make absolutely certain, that no malfunctioning or dead clients linger on in lists...
 
+Moreover, I might have a problem with my way of implementing my designs: I tend to desing carefully, then start implementing in a way, that compiling before the entire thing is finished is not possible. This leads to my current situation, where I write code fiercely for 20 hours, then spend a couple of hours to get it to compile and then 10--$\infty$ hours of debugging and adding bubble gum.
+
+At first I was considering using libevent, but then ended up using plain old select for multiplexing, as I was afraid that libevent would make things too abstract for this course. According to creators of libevent however, each platform seems to have its own most efficient way of event based multiplexing, so using libevent would probably be advised for portability of efficiency!
+
+All in all, I still seem to have a couple of things to learn about using select and nonblocking I/O.
 
 \end{document}
