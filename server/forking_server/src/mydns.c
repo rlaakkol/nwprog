@@ -52,7 +52,7 @@ generate_query_msg(dns_msg *q, void *buf)
 	memcpy(&htons((uint16_t) getpid()), buf, 2)
 	offset += 2;
 	/*line2*/
-	tmp = 0x0000; /* query type */
+	tmp = q->type << 15; /* query type */
 	tmp |= ((q->opcode << 11) & 0x7800);
 	tmp |= (q->flags << 7 & 0x0780);
 	memcpy(buf + offset, &tmp, 2)

@@ -371,10 +371,22 @@ parse_post_payload(int sockfd, Http_info *specs)
 }
 
 int
+str_to_rrtype(const char *str)
+{
+	if (!strncasecmp(str, "AAAA", 4)) return RR_TYPE_AAAA;
+	else if (!strncasecmp(str, "A", 1)) return RR_TYPE_A;
+}
+
+int
 process_post(int sockfd, Http_info *specs)
 {
-	int udpsock;
-	char *server, *uri;
+	int udpsock, len;
+	ssize_t recvd;
+	char *server, *uri, sendbuf[10*MAXLINE], recvbuf[MAXN];
+	struct timeval timeout;
+	dns_msg query, response;
+
+
 
 	uri = parse_uri(specs->uri)
 
@@ -387,6 +399,31 @@ process_post(int sockfd, Http_info *specs)
 
 	/* Connect to dns server */
 	udpsock = connect(server, "domain", SOCK_DGRAM);
+	query.type = DNS_QUERY;
+	query.opcode = DNS_STANDARD;
+	query.flags = 0;
+	query.z = 0;
+	query.rcode = 0;
+	query.qcount = 1;
+	query.name = specs.post_name;
+	query.type = str_to_dnstype(specs.post_type);
+
+	len = generate_query_msg(&query, buf);
+
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 500000;
+
+	setsockopt(udpsock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout))
+
+	for (i = 0; i < MAX_RETRY; i++) {
+		send(udpsock, sendbuf, len, 0);
+		if ((recvd = recv(udpsock, recvbuf, MAXN, 0)) > 0) break;
+	}
+	if (recvd <= 0) {
+		/*error*/
+	}
+
+	parse_dns_response(recvbuf, response);
 
 
 
