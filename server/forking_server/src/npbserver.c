@@ -1,3 +1,18 @@
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <errno.h>
+#include <stdio.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <syslog.h>
+#include <dirent.h>
+
 #include "npbserver.h"
 #include "myhttp.h"
 
@@ -54,8 +69,8 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
 }
 
 
-ssize_t writen(int fd, const void *vptr, size_t n)
-{
+/*ssize_t writen(int fd, const void *vptr, size_t n)
+*{
         size_t          nleft;
         ssize_t         nwritten;
         const char      *ptr;
@@ -65,16 +80,16 @@ ssize_t writen(int fd, const void *vptr, size_t n)
         while (nleft > 0) {
                 if ( (nwritten = write(fd, ptr, nleft)) <= 0) {
                         if (nwritten < 0 && errno == EINTR)
-                                nwritten = 0;           /* and call write() again */
+                                nwritten = 0;           /
                         else
-                                return(-1);                     /* error */
+                                return(-1);                     
                 }
 
                 nleft -= nwritten;
                 ptr   += nwritten;
         }
         return(n);
-}
+}*/
 
 void web_child(int sockfd)
 {
@@ -87,7 +102,7 @@ void web_child(int sockfd)
 	
 	memset(specs, 0, sizeof(Http_info));
 	while (1) {
-		nread = 0;
+		/*nread = 0;
 		while ((nread += read(sockfd, buf+nread, MAXLINE-nread)) > 0 && strstr(buf, "\r\n\r\n") == NULL);
 
 		if (nread <= 0) break;
@@ -130,7 +145,23 @@ void web_child(int sockfd)
 			exit(-1);
 		}
 		if (specs->close) break;
+		memset(specs, 0, sizeof(Http_info));*/
+		parse_request(sockfd, specs);
+
+		if (specs->command == GET) {	// Send file
+			process_get(sockfd, specs);
+		} else if (specs->command == PUT) {	// Store file
+			process_put(sockfd, specs);
+		else if (specs->command == POST) {
+			process_post(sockfd, specs);
+		} else {			// Unknown command
+			writen(sockfd, REPLY_400, strlen(REPLY_400));
+			exit(-1);
+		}
+		if (specs->close) break;
 		memset(specs, 0, sizeof(Http_info));
+		
+
 	}
 	free(specs);
 

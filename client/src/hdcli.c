@@ -150,7 +150,7 @@ main(int argc, char **argv)
 
 
 		/* Connect to server */
-		if ((sockfd = tcp_connect(host, service)) == -1) {
+		if ((sockfd = connect(host, service, SOCK_STREAM)) == -1) {
 			break;
 		}
 

@@ -81,6 +81,9 @@ parse_rr(void *rr_msg, dns_rr *rr)
 	unsigned int offset = 0;
 	uint16_t tmps;
 	uint32_t tmpl;
+	uint8_t tmp[16];
+	struct in6_addr addr6;
+	struct in_addr addr;
 
 	offset += qname_to_str(rr->name, rr_msg);
 
@@ -88,7 +91,7 @@ parse_rr(void *rr_msg, dns_rr *rr)
 	offset += 2;
 	rr->type = htons(tmps);
 
-	if (rr->type != RR_TYPE_A) return -1;
+	if (!(rr->type == RR_TYPE_A || rr->type == RR_TYPE_AAAA) return -1;
 
 	memcpy(&tmps, rr_msg + offset, 2);
 	offset += 2;
@@ -102,6 +105,22 @@ parse_rr(void *rr_msg, dns_rr *rr)
 	offset += 2;
 	rr->rdlength = htons(tmps);
 
+	if (rr->type == RR_TYPE_A) {
+		if (rr->rdlength != 4) return -1;
+		memcpy(tmpl, rr_msg + offset, 4);
+		offset += 4;
+		memcpy(in_addr.s_addr, tmpl, 4);
+		rr->addr = inet_ntop(AF_INET, addr);
+	} else if (rr->type == RR_TYPE_AAAA) {
+		if (rr->rdlength != 16) return -1;
+		memcpy(tmp, rr_msg + offset, 16);
+		offset += 16;
+		memcpy(addr6.s6_addr, tmp, 16);
+		rr->addr = inet_ntop(AF_INET6, addr6);
+	}
+	else return -1;
+
+	return offset;
 
 }
 
@@ -143,12 +162,16 @@ parse_dns_response(void *msg, dns_msg *r)
 	r->arcount = ntohs(tmp);
 
 	for (i = 0; i < r->ancount; i++) {
-
-
+		offset += parse_rr(msg + offset, (r->rr + i));
 	}
 
+	for (i = 0; i < r->nscount; i++) {
+		/* TODO */
+	}
 
-
+	for (i = 0; i < r->arcount; i++) {
+		/* TODO */
+	}
 
 	return 0;
 
