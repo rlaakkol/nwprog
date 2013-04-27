@@ -10,6 +10,8 @@ typedef struct
 	int				close;
 	char				iam[80];
 	ssize_t				length;
+	int 				post_type;
+	char 				*post_name;
 } Http_info;
 
 int parse_startline(char *line, Http_info *specs);

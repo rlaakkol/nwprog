@@ -370,17 +370,12 @@ parse_post_payload(int sockfd, Http_info *specs)
 
 }
 
-int
-str_to_rrtype(const char *str)
-{
-	if (!strncasecmp(str, "AAAA", 4)) return RR_TYPE_AAAA;
-	else if (!strncasecmp(str, "A", 1)) return RR_TYPE_A;
-}
+
 
 int
 process_post(int sockfd, Http_info *specs)
 {
-	int udpsock, len;
+	int udpsock, len, i;
 	ssize_t recvd;
 	char *server, *uri, sendbuf[10*MAXLINE], recvbuf[MAXN];
 	struct timeval timeout;
@@ -398,7 +393,7 @@ process_post(int sockfd, Http_info *specs)
 	parse_post_payload(sockfd, specs)
 
 	/* Connect to dns server */
-	udpsock = connect(server, "domain", SOCK_DGRAM);
+	udpsock = myconnect(server, "domain", SOCK_DGRAM);
 	query.type = DNS_QUERY;
 	query.opcode = DNS_STANDARD;
 	query.flags = 0;
@@ -406,14 +401,14 @@ process_post(int sockfd, Http_info *specs)
 	query.rcode = 0;
 	query.qcount = 1;
 	query.name = specs.post_name;
-	query.type = str_to_dnstype(specs.post_type);
+	query.type = str_to_rrtype(specs.post_type);
 
-	len = generate_query_msg(&query, buf);
+	len = generate_query_msg(&query, sendbuf);
 
 	timeout.tv_sec = 0;
 	timeout.tv_usec = 500000;
 
-	setsockopt(udpsock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout))
+	setsockopt(udpsock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
 	for (i = 0; i < MAX_RETRY; i++) {
 		send(udpsock, sendbuf, len, 0);
@@ -423,7 +418,7 @@ process_post(int sockfd, Http_info *specs)
 		/*error*/
 	}
 
-	parse_dns_response(recvbuf, response);
+	parse_dns_response(recvbuf, &response);
 
 
 

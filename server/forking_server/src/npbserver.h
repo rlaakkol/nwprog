@@ -1,6 +1,8 @@
 #ifndef NPBSERVER_H
 #define NPBSERVER_H
 
+#include <sys/socket.h>
+
 
 
 #define LISTENQ 5
@@ -10,7 +12,7 @@
 int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp);
 void web_child(int sockfd);
 void sig_chld(int signo);
-int tcp_connect(const char *host, const char *serv);
+/*int tcp_connect(const char *host, const char *serv);*/
 /*ssize_t readn(int fd, void *vptr, size_t n);*/
 /*ssize_t writen(int fd, const void *vptr, size_t n);*/
 
