@@ -46,13 +46,15 @@ expand_to_qname(char *name, char *buf)
 }
 
 int
-qnamelen(char* buf)
+qnamelen(char *buf)
 {
 	unsigned int offset = 0;
 	char c;
 	while(1) { 
 		c = buf[offset];
+		printf("%02x\n", c);
 		if (c == 0) return offset + 1;
+		if (c & 0xC0) return offset + 2;
 		offset += c + 1;
 	}
 
@@ -63,6 +65,7 @@ qnamelen(char* buf)
 int
 generate_query_msg(dns_msg *q, char *buf)
 {
+	int i;
 	uint16_t tmp;
 	unsigned int offset = 0;
 	int 	qname_len;
@@ -70,20 +73,22 @@ generate_query_msg(dns_msg *q, char *buf)
 
 	/*id*/
 	q->id = (uint16_t) getpid();
+	printf("id: %" SCNu16 "\n", q->id);
 	tmp = htons(q->id);
-	memcpy(buf, &tmp, 2);
+	memcpy(buf + offset, &tmp, 2);
+	printf("\n");
 	offset += 2;
 	printf("offset: %u\n", offset);
 	/*line2*/
 	tmp = q->type << 15; /* query type */
 	tmp |= ((q->opcode << 11) & 0x7800);
-	tmp |= (q->flags << 7 & 0x0780);
+	tmp |= ((q->flags << 7) & 0x0F00);
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
 	/*line3*/
 	tmp = htons(q->qcount);
-	memcpy(buf, &tmp, 2);
+	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
 	/*only queries*/
@@ -99,7 +104,7 @@ generate_query_msg(dns_msg *q, char *buf)
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
-	tmp = htons(0);
+	tmp = htons(1); /* QUERY CLASS IN */
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
@@ -110,6 +115,7 @@ generate_query_msg(dns_msg *q, char *buf)
 int
 parse_rr(char *rr_msg, dns_rr *rr)
 {
+	int i;
 	unsigned int offset = 0;
 	uint16_t tmps;
 	uint32_t tmpl;
@@ -119,11 +125,18 @@ parse_rr(char *rr_msg, dns_rr *rr)
 	char *addrstr;
 
 	offset += qnamelen(rr_msg);
+	printf("offset: %u\n", offset);
+
 	memcpy(rr->name, rr_msg, offset);
+	/*for (i = 0; i < offset; i++) {
+		printf("%02x ", rr->name[i]);
+	}*/
 
 	memcpy(&tmps, rr_msg + offset, 2);
 	offset += 2;
 	rr->type = htons(tmps);
+
+	printf("rr type: %" SCNu16 "\n", rr->type);
 
 	if (!(rr->type == RR_TYPE_A || rr->type == RR_TYPE_AAAA)) return -1;
 
@@ -131,23 +144,29 @@ parse_rr(char *rr_msg, dns_rr *rr)
 	offset += 2;
 	rr->class = htons(tmps);
 
+	printf("rr class: %" SCNu16 "\n", rr->class);
+
 	memcpy(&tmpl, rr_msg + offset, 4);
 	offset += 4;
 	rr->ttl = htons(tmpl);
+
+	printf("ttl: %" SCNu16 "\n", rr->ttl);
 
 	memcpy(&tmps, rr_msg + offset, 2);
 	offset += 2;
 	rr->rdlength = htons(tmps);
 
+	printf("rdlength: %" SCNu16 "\n", rr->rdlength);
+
 	if (rr->type == RR_TYPE_A) {
-		if (rr->rdlength != 4) return -1;
+		/*if (rr->rdlength != 4) return -1;*/
 		addrstr = malloc(20*sizeof(char));
 		memcpy(&tmpl, rr_msg + offset, 4);
 		offset += 4;
 		memcpy(&(addr.s_addr), &tmpl, 4);
 		rr->addr = inet_ntop(AF_INET, &addr, addrstr, 20);
 	} else if (rr->type == RR_TYPE_AAAA) {
-		if (rr->rdlength != 16) return -1;
+		/*if (rr->rdlength != 16) return -1;*/
 		addrstr = malloc(30*sizeof(char));
 		memcpy(tmp, rr_msg + offset, 16);
 		offset += 16;
@@ -163,13 +182,14 @@ parse_rr(char *rr_msg, dns_rr *rr)
 int
 parse_dns_response(char *msg, dns_msg *r)
 {
-	int i;
+	int i, l;
 	uint16_t tmp;
 	unsigned int offset = 0;
 
 	memcpy(&tmp, msg, 2);
 	offset += 2;
 	r->id = ntohs(tmp);
+	printf("response id: %" SCNu16 "\n", r->id);
 	
 
 	memcpy(&tmp, msg + offset, 2);
@@ -180,23 +200,34 @@ parse_dns_response(char *msg, dns_msg *r)
 	r->z = (tmp & 0x0070) >> 4;
 	r->rcode = (tmp & 0x000F);
 
+	printf("response code: %" SCNu16 "\n", r->rcode);
+
 	if (r->rcode != 0) return 1;
 
 	memcpy(&tmp, msg + offset, 2);
 	offset += 2;
 	r->qcount = ntohs(tmp);
-	if (r->qcount > 0) {
-		return -1; /*query from server?*/
-	}
+	printf("query count: %" SCNu16 "\n", r->qcount);
+/*	if (r->qcount > 0) {
+		return -1; 
+	} */
 	memcpy(&tmp, msg + offset, 2);
 	offset += 2;
 	r->ancount = ntohs(tmp);
+	printf("answer count: %" SCNu16 "\n", r->ancount);
 	memcpy(&tmp, msg + offset, 2);
 	offset += 2;
 	r->nscount = ntohs(tmp);
 	memcpy(&tmp, msg + offset, 2);
 	offset += 2;
 	r->atcount = ntohs(tmp);
+
+	for (i = 0; i < r->qcount; i++) {
+
+		l = qnamelen(msg + offset);
+		printf("response qnamelen: %d\n", l);
+		offset += l + 4;
+	}
 
 	for (i = 0; i < r->ancount; i++) {
 

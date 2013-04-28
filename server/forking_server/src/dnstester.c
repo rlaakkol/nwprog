@@ -23,15 +23,20 @@ main(int argc, char *argv[])
 	udpsock = myconnect(server, "4500", SOCK_DGRAM);
 	query.type = DNS_QUERY;
 	query.opcode = DNS_STANDARD;
-	query.flags = 0;
+	query.flags = 8;
 	query.z = 0;
 	query.rcode = 0;
 	query.qcount = 1;
-	query.name = "www.aalto.fi";
-	query.type = str_to_rrtype("A");
+	query.name = "nwprog1.netlab.hut.fi";
+	query.type = str_to_rrtype("AAAA");
 
 	printf("generating query\n");
 	len = generate_query_msg(&query, sendbuf);
+
+	for (i = 0; i < len; i++) {
+		printf("%02x ", sendbuf[i]);
+	}
+	printf("\n");
 
 	timeout.tv_sec = 1;
 	timeout.tv_usec = 500000;
@@ -46,10 +51,11 @@ main(int argc, char *argv[])
 	}
 	if (recvd <= 0) {
 		/*error*/
+		return -1;
 	}
-
+	printf("parsing response\n");
 	parse_dns_response(recvbuf, &response);
-	for (i = 0; i < response.rr_count; i++) printf("%s", response.rr[i].addr);
+	for (i = 0; i < response.rr_count; i++) printf("result: %s\n", response.rr[i].addr);
 
 
 	return 0;
