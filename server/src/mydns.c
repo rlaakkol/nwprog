@@ -30,7 +30,7 @@ expand_to_qname(char *name, char *buf)
 			memcpy(buf + offset, &octets, 1);
 			memcpy(buf + offset + 1, first, octets);
 			offset += octets + 1;
-			printf("qoffset: %u\n", offset);
+
 			
 			if (*last == '\0') {
 				buf[offset] = 0;
@@ -75,9 +75,8 @@ generate_query_msg(dns_msg *q, char *buf)
 	printf("id: %" SCNu16 "\n", q->id);
 	tmp = htons(q->id);
 	memcpy(buf + offset, &tmp, 2);
-	printf("\n");
 	offset += 2;
-	printf("offset: %u\n", offset);
+
 	/*line2*/
 	
 	/* tmp = ((q->type << 15) & 0x8000);
@@ -85,32 +84,32 @@ generate_query_msg(dns_msg *q, char *buf)
 	tmp |= ((q->flags << 9) & 0x0F00); */
 	/*tmp = htons(tmp);*/
 
-	tmp = 0;
+	tmp = 0x1 << 8; /*RD flag set for better functionality */
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
-	printf("offset: %u\n", offset);
+
 	/*line3*/
 	tmp = htons(q->qcount);
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
-	printf("offset: %u\n", offset);
+
 	/*only queries*/
 	bzero(buf + offset, 6);
 	offset += 6;
-	printf("offset: %u\n", offset);
+
 
 	/*append label-formatted qname */
 	qname_len = expand_to_qname(q->name, buf + offset);
 	offset += qname_len;
-	printf("offset: %u\n", offset);
+
 	tmp = htons(q->type);
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
-	printf("offset: %u\n", offset);
+
 	tmp = htons(1); /* QUERY CLASS IN */
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
-	printf("offset: %u\n", offset);
+
 
 	return offset;
 }
