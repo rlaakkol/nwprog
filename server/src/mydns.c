@@ -13,8 +13,7 @@ int
 str_to_rrtype(const char *str)
 {
 	if (strlen(str) >= 4 && !strncasecmp(str, "AAAA", 4)) return RR_TYPE_AAAA;
-	else if (strlen(str) == 1 && !strncasecmp(str, "A", 1)) return RR_TYPE_A;
-	else return -1;
+	else return RR_TYPE_A;
 }
 
 int
