@@ -9,6 +9,8 @@
 #define MAX_RETRY 3
 #define MAXLINE 1024
 
+#define HTTP_BODY_F "Name=%s&Addr="
+
 
 typedef struct {
 	char 		name[MAXLINE];

@@ -9,7 +9,7 @@ int
 main(int argc, char *argv[])
 {
 	int udpsock, len, i;
-	uint16_t 	tmp;
+	/*uint16_t 	tmp;*/
 	ssize_t recvd;
 	char *server, sendbuf[10*MAXLINE], recvbuf[MAXN];
 	struct timeval timeout;

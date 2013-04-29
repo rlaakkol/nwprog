@@ -16,6 +16,9 @@
 
 #include "myhttp.h"
 #include "mysockio.h"
+#include "mydns.h"
+#include "myconnect.h"
+#include "npbserver.h"
 
 
 
@@ -78,6 +81,7 @@ int parse_header(char *line, Http_info *specs)
 			return -1;
 		}
 	}
+
 	return 1;
 
 }
@@ -105,7 +109,6 @@ parse_request(int sock, Http_info *req)
 	int				first, ret;
 
 	printf("Parsing response\n");
-	req->fd = sock;
 	first = 1;
 
 	buf_init();
@@ -128,8 +131,8 @@ parse_request(int sock, Http_info *req)
 			/* If first line, parse accordingly */
 			if (parse_startline(line, req) < 0) return EXIT_FAILURE;
 			first = 0;
-			/* Else parse as headerline, return value from parser means end of header */
-		} else if ((ret = parse_response_headerline(line, req)) == 1) break;
+			/* Else parse as headerline, return value 0 from parser means end of header */
+		} else if ((ret = parse_header(line, req)) == 0) break;
 		else if (ret < 0) return EXIT_FAILURE;
 	}
 
@@ -137,7 +140,7 @@ parse_request(int sock, Http_info *req)
 }
 
 int
-store_request_payload(int sockfd, FILE *outfile, Http_info *req, size_t *remaining)
+store_request_payload(int sockfd, FILE *outfile, Http_info *req, ssize_t *remaining)
 {
 	size_t	next;
 	int		rbytes, wbytes;
@@ -168,8 +171,8 @@ int process_put(int sockfd, Http_info *specs)
 {
 	int	new;
 	FILE	*outfile;
-	ssize_t	rem, readlen, n;
-	char	*path, buf[MAXLINE], *reply;
+	ssize_t	rem;
+	char	*path, *reply;
 	struct stat	fs;
 	
 	new = 0;
@@ -200,11 +203,11 @@ int process_put(int sockfd, Http_info *specs)
 
 
 
-	if (fwrite(oldbuf, sizeof(char), oldrem, outfile) < (size_t) oldrem) {
+	/*if (fwrite(oldbuf, sizeof(char), oldrem, outfile) < (size_t) oldrem) {
 		syslog(LOG_ERR, "fwrite error\n");
 		return EXIT_FAILURE;
 	}
-	
+	*/
 	
 	/*rem = specs->length - oldrem;
 	n = 0;
@@ -236,6 +239,7 @@ int process_put(int sockfd, Http_info *specs)
 	if (writen(sockfd, reply, strlen(reply)) < (ssize_t) strlen(reply)) {
 		syslog(LOG_INFO, "error sending response");
 		return -1;
+	}
 	
 
 
@@ -330,15 +334,19 @@ int process_get(int sockfd, Http_info *specs)
 int
 parse_post_argument(const char *line, Http_info *specs)
 {
-	char		field[MAX_FIELDLEN], value[MAX_FIELDLEN];
+	char		field[MAXLINE], value[MAXLINE];
 
-	sscanf(line, "%[^=]:%s", field, value);
+	sscanf(line, "%[^=]=%s", field, value);
 
 	if (strncasecmp(field, "Type", 4) == 0) {
-		strcpy(specs->post_type, value);
+		specs->post_type = str_to_rrtype(value);
+		return 0;
 	} else if (strncasecmp(field, "Name", 4) == 0) {
 		strcpy(specs->post_name, value);
+		return 0;
 	}
+
+	return -1;
 
 }
 
@@ -359,38 +367,42 @@ parse_post_payload(int sockfd, Http_info *specs)
 /*			printf("%c", line[n]); */
 			n++;
 			m++;
-		} while (m < specs->length && *(line + n - 1) != '&'));
+		} while (m < specs->length && *(line + n - 1) != '&');
 			/* Terminate line */
 		line[n-1] = '\0';
 
-		parse_post_argument(line, specs)
+
 		
-		else if (ret < 0) return EXIT_FAILURE;
+		syslog(LOG_INFO, "parsing argument for POST");
+		if (parse_post_argument(line, specs) < 0) return EXIT_FAILURE;
 	}
+
+	return 0;
 
 }
 
 
 
 int
-process_post(int sockfd, Http_info *specs)
+process_post(int sockfd, Http_info *specs, const char *server)
 {
-	int udpsock, len, i;
+	int udpsock, len, i, l;
 	ssize_t recvd;
-	char *server, *uri, sendbuf[10*MAXLINE], recvbuf[MAXN];
+	char *uri, sendbuf[10*MAXLINE], recvbuf[MAXN], http_resp[10*MAXLINE], http_body[10*MAXLINE];
 	struct timeval timeout;
 	dns_msg query, response;
 
+	syslog(LOG_INFO, "processing POST");
 
 
-	uri = parse_uri(specs->uri)
+	uri = parse_uri(specs->uri);
 
-	if (!strncmp(uri, "dns-query", 9)) {
+	if (!strncmp(uri, "/dns-query", 9)) {
 		writen(sockfd, REPLY_404, strlen(REPLY_404));
 		return -1;
 	}
 
-	parse_post_payload(sockfd, specs)
+	parse_post_payload(sockfd, specs);
 
 	/* Connect to dns server */
 	udpsock = myconnect(server, "domain", SOCK_DGRAM);
@@ -400,12 +412,12 @@ process_post(int sockfd, Http_info *specs)
 	query.z = 0;
 	query.rcode = 0;
 	query.qcount = 1;
-	query.name = specs.post_name;
-	query.type = str_to_rrtype(specs.post_type);
+	query.name = specs->post_name;
+	query.type = specs->post_type;
 
 	len = generate_query_msg(&query, sendbuf);
 
-	timeout.tv_sec = 0;
+	timeout.tv_sec = 1;
 	timeout.tv_usec = 500000;
 
 	setsockopt(udpsock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
@@ -415,10 +427,36 @@ process_post(int sockfd, Http_info *specs)
 		if ((recvd = recv(udpsock, recvbuf, MAXN, 0)) > 0) break;
 	}
 	if (recvd <= 0) {
-		/*error*/
+		syslog(LOG_INFO, "Maximum retries to dns server exceeded");
+		writen(sockfd, REPLY_404, strlen(REPLY_404));
+		return -1;
 	}
 
-	parse_dns_response(recvbuf, &response);
+	if (parse_dns_response(recvbuf, &response) != 0 || response.rr_count < 1) {
+		syslog(LOG_INFO, "invalid dns response or no rr found for %s", query.name);
+		writen(sockfd, REPLY_404, strlen(REPLY_404));
+		return -1;
+	} else {
+		sprintf(http_body, HTTP_BODY_F, specs->post_name);
+		
+		for (i = 0; i < response.rr_count; i++) {
+			strcat(http_body, response.rr[i].addr);
+			strcat(http_body, ",");
+		}
+		http_body[strlen(http_body) - 1] = '\0';
+
+		sprintf(http_resp, REPLY_200F, strlen(http_body), "text/plain");
+		strcat(http_resp, http_body);
+		l = strlen(http_resp);
+
+		if (writen(sockfd, http_resp, l) < l) {
+			syslog(LOG_INFO, "could not write response");
+			exit(-1);
+		}
+
+	}
+
+
 
 
 

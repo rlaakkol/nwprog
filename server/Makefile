@@ -1,30 +1,17 @@
-##
-##all: fork_srv select_srv
-##
-##fork_srv:
-##	$(MAKE) -C forking_server
-##	ln -s forking_server/npbsrv fork_srv
-##
-##select_srv:
-##	$(MAKE) -C selecting_server
-##	ln -s selecting_server/hdserver select_srv
+CC = gcc
+CFLAGS = -std=gnu99 -c -Wall -Wextra -pedantic -g
+SRC = src/main.c src/npbserver.c src/myhttp.c src/myconnect.c src/mydns.c src/mysockio.c
+HDRS = src/myhttp.h src/npbserver.h src/myconnect.h src/mydns.h src/mysockio.h
+OBJ = $(SRC:.c=.o)
+EXE = hdserver
+TESTER = src/dnstester.c
 
+all: $(EXE)
 
+$(EXE): $(OBJ) 
+	$(CC) $(OBJ) -o $@
 
-SUBDIRS = forking_server selecting_server
+$(OBJ): $(HDRS)
 
-all: fork_srv select_srv
-
-.PHONY: subdirs $(SUBDIRS)
-
-subdirs: $(SUBDIRS)
-
-$(SUBDIRS):
-	$(MAKE) -C $@
-
-fork_srv: forking_server
-	ln -fs forking_server/npbsrv fork_srv
-
-select_srv: selecting_server
-	ln -fs selecting_server/hdserver select_srv
-
+clean:
+	rm -f $(OBJ)

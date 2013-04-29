@@ -15,6 +15,7 @@
 
 #include "npbserver.h"
 #include "myhttp.h"
+#include "mysockio.h"
 
 
 /* Start listening on port <serv>
@@ -91,11 +92,9 @@ int tcp_listen(const char *host, const char *serv, socklen_t *addrlenp)
         return(n);
 }*/
 
-void web_child(int sockfd)
+void web_child(int sockfd, const char *server)
 {
-        int             h;
-        ssize_t         nread, rem;
-        char            buf[MAXLINE], *line, *templine;
+
 	Http_info	*specs;
 
 	specs = malloc(sizeof(Http_info));
@@ -152,8 +151,8 @@ void web_child(int sockfd)
 			process_get(sockfd, specs);
 		} else if (specs->command == PUT) {	// Store file
 			process_put(sockfd, specs);
-		else if (specs->command == POST) {
-			process_post(sockfd, specs);
+		} else if (specs->command == POST) {
+			process_post(sockfd, specs, server);
 		} else {			// Unknown command
 			writen(sockfd, REPLY_400, strlen(REPLY_400));
 			exit(-1);

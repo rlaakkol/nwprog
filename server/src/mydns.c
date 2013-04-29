@@ -65,7 +65,6 @@ qnamelen(char *buf)
 int
 generate_query_msg(dns_msg *q, char *buf)
 {
-	int i;
 	uint16_t tmp;
 	unsigned int offset = 0;
 	int 	qname_len;
@@ -80,11 +79,13 @@ generate_query_msg(dns_msg *q, char *buf)
 	offset += 2;
 	printf("offset: %u\n", offset);
 	/*line2*/
-	tmp = 0;
+	
 	/* tmp = ((q->type << 15) & 0x8000);
 	tmp |= ((q->opcode << 11) & 0x7800);
 	tmp |= ((q->flags << 9) & 0x0F00); */
 	/*tmp = htons(tmp);*/
+
+	tmp = 0;
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
@@ -117,7 +118,6 @@ generate_query_msg(dns_msg *q, char *buf)
 int
 parse_rr(char *rr_msg, dns_rr *rr)
 {
-	int i;
 	unsigned int offset = 0;
 	uint16_t tmps;
 	uint32_t tmpl;

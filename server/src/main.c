@@ -25,9 +25,10 @@ int daemon_init(int argc, const char **argv, int facility)
 
 	int		  listenfd, connfd;
 	pid_t		  childpid;
-	void		  sig_chld(int), sig_int(int), web_child(int);
+	void		  sig_chld(int), sig_int(int), web_child(int, const char *);
 	socklen_t	  clilen, addrlen;
 	struct sockaddr	  *cliaddr;
+	const char *server;
 	/* Create child, terminate parent
 	   - shell thinks command has finished, child continues in background
 	   - inherits process group ID => not process group leader
@@ -86,11 +87,13 @@ int daemon_init(int argc, const char **argv, int facility)
 
 	// open syslog
 	openlog(argv[0], LOG_PID, facility);
-	if (argc == 3)
+	if (argc == 4){
 		listenfd = tcp_listen(NULL, argv[2], &addrlen);
-	else if (argc == 4)
+ 		server = argv[3];
+ 	} else if (argc == 5) {
 		listenfd = tcp_listen(argv[2], argv[3], &addrlen);
-	else {
+		server = argv[4];
+	} else {
 		fprintf(stderr, "usage: npbsrv [ <host> ] <port#>\n");
 		return -1;
 	}
@@ -120,7 +123,7 @@ int daemon_init(int argc, const char **argv, int facility)
 
 		if ( (childpid = fork()) == 0) {	/* child process */
 			close(listenfd);	/* close listening socket */
-			web_child(connfd);	/* process request */
+			web_child(connfd, server);	/* process request */
 			exit(0);
 		}
 		close(connfd);			/* parent closes connected socket */
@@ -135,9 +138,9 @@ int daemon_init(int argc, const char **argv, int facility)
 int main(int argc, const char **argv)
 {
 
-	if (argc < 3 || argc > 4)
+	if (argc < 4 || argc > 5)
 	{
-		fprintf(stderr, "usage: %s <workdir> [ <host> ] <port#>\n", argv[0]);
+		fprintf(stderr, "usage: %s <workdir> [ <host> ] <port#> <dns-server>\n", argv[0]);
                 return -1;
 	}
 	daemon_init(argc, argv, LOG_LOCAL7);
