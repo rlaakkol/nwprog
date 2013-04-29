@@ -80,9 +80,11 @@ generate_query_msg(dns_msg *q, char *buf)
 	offset += 2;
 	printf("offset: %u\n", offset);
 	/*line2*/
-	tmp = q->type << 15; /* query type */
+	tmp = 0;
+	/* tmp = ((q->type << 15) & 0x8000);
 	tmp |= ((q->opcode << 11) & 0x7800);
-	tmp |= ((q->flags << 7) & 0x0F00);
+	tmp |= ((q->flags << 9) & 0x0F00); */
+	/*tmp = htons(tmp);*/
 	memcpy(buf + offset, &tmp, 2);
 	offset += 2;
 	printf("offset: %u\n", offset);
