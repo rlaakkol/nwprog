@@ -9,6 +9,7 @@
 #define STARTLINEFMT "%s %s HTTP/1.1\r\n"
 #define SHEADERFMT "%s: %s\r\n"
 #define IHEADERFMT "%s: %ld\r\n"
+#define POSTQFMT "Name=%s&Type=%s"
 
 /* HTTP type code definitions */
 #define OK 200
@@ -21,7 +22,8 @@ typedef int response_type;
 /* Request type enum */
 typedef enum {
 	GET,
-	PUT
+	PUT,
+	POST
 } request_type;
 
 /* Response struct */
@@ -41,6 +43,7 @@ typedef struct {
 	unsigned long	payload_len;
 	char 			content_type[MAX_FIELDLEN];
 	int				close;
+	char 			post_payload[MAX_FIELDLEN];
 } http_request;
 
 /* Return HTTP response type as a number */
@@ -53,7 +56,7 @@ parse_response(int sock, http_response *res);
 
 /* Generate a HTTP request struct in req */
 void
-generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req);
+generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, const char *post_name, const char *post_type, int close, const char *content_type, http_request *req);
 
 /* Write response payload into local file stream from socket */
 int

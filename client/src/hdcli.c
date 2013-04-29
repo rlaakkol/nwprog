@@ -4,9 +4,10 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/socket.h>
 
 #include "myhttp.h"
-#include "tcp_connect.h"
+#include "myconnect.h"
 #include "mysockio.h"
 
 
@@ -89,13 +90,16 @@ main(int argc, char **argv)
 
 	if (argc == 11) {
 	/* Read command line arguments */
-		while ((c = getopt(argc, argv, "dul:r:p:i:")) != -1) {
+		while ((c = getopt(argc, argv, "dunl:r:p:i:")) != -1) {
 			switch (c) {
 				case 'd':
 				mode = 'd';
 				break;
 				case 'u':
 				mode = 'u';
+				break;
+				case 'n':
+				mode = 'n';
 				break;
 				case 'l':
 				strcpy(lfilename, optarg);
@@ -121,13 +125,16 @@ main(int argc, char **argv)
 		}
 	}
 	else if (argc == 5) {
-		while ((c = getopt(argc, argv, "dul:")) != -1) {
+		while ((c = getopt(argc, argv, "dunl:")) != -1) {
 			switch (c) {
 				case 'd':
 				mode = 'd';
 				break;
 				case 'u':
 				mode = 'u';
+				break;
+				case 'n':
+				mode = 'n';
 				break;
 				case 'l':
 				strcpy(lfilename, optarg);
@@ -150,7 +157,7 @@ main(int argc, char **argv)
 
 
 		/* Connect to server */
-		if ((sockfd = connect(host, service, SOCK_STREAM)) == -1) {
+		if ((sockfd = myconnect(host, service, SOCK_STREAM)) == -1) {
 			break;
 		}
 
@@ -164,7 +171,7 @@ main(int argc, char **argv)
 			}
 
 			/* Generate GET request */
-			generate_request(GET, rfilename, host, iam, NULL, 0, NULL, req);
+			generate_request(GET, rfilename, host, iam, NULL, NULL, NULL, 0, NULL, req);
 
 			/* Send the request to server */
 			if (send_request(sockfd, req, NULL) < 0) break;
@@ -191,7 +198,7 @@ main(int argc, char **argv)
 				}
 				break;
 			}
-		} else {
+		} else if (mode == 'u') {
 			/* Upload (PUT) mode */
 
 			/* Open local file for reading */
@@ -201,7 +208,7 @@ main(int argc, char **argv)
 			}
 
 			/* Generate PUT request */
-			generate_request(PUT, rfilename, host, iam, lfilename, 0, "text/plain", req);
+			generate_request(PUT, rfilename, host, iam, lfilename, NULL, NULL, 0, "text/plain", req);
 			
 			/* Send request to server */
 			if (send_request(sockfd, req, lfile) < 0) break;
@@ -222,13 +229,37 @@ main(int argc, char **argv)
 				break;
 			}
 
+		} else {
+			/* DNS (POST) mode */
+			generate_request(POST, "dns-query", host, iam, NULL, lfilename, rfilename, 0, "application/x-www-form-urlencoded", req);
+			/* Send request to server */
+			if (send_request(sockfd, req, NULL) < 0) break;
+
+			/* Parse the response */
+			if (parse_response(sockfd, res) < 0) break;
+
+			if (res->type == OK && res->payload_len > 0) {
+				/* If response type is CREATED (new file) or OK (existing file), print success message */
+				fprintf(stdout, "Successful!\n");
+				store_response_payload(stdout, res, &remaining);
+				printf("\n");
+			} else {
+				/* If response type is some failure, print data */
+				fprintf(stderr, "Error resolving! Code %d\n", restype_to_int(res));
+				if (res->payload_len > 0) {
+					fprintf(stderr, "Error message payload:\n---\n");
+					store_response_payload(stderr, res, &remaining);
+					printf("\n");
+				}
+				break;
+			}
 		}
 
 		/* Everything was successful :) Free resources */
 		free(req);
 		free(res);
 		close(sockfd);
-		fclose(lfile);
+		if (mode != 'n') fclose(lfile);
 
 		return EXIT_SUCCESS;
 	} while (0);

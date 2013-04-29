@@ -1,7 +1,7 @@
 CC = gcc 
 CFLAGS = -Wall -Wextra -pedantic
-SOURCES = src/hdcli.c src/myhttp.c src/mysockio.c src/connect.c
-LIBS = src/myhttp.h src/mysockio.h src/connect.h
+SOURCES = src/hdcli.c src/myhttp.c src/mysockio.c src/myconnect.c
+LIBS = src/myhttp.h src/mysockio.h src/myconnect.h
 OBJS = $(SOURCES:.c=.o)
 EXE = hdcli
 

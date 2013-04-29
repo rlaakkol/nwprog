@@ -14,7 +14,7 @@
 #include <string.h>
 
 
-#include "connect.h"
+#include "myconnect.h"
 
 /* Get IPV4 or IPV6 address from struct sockaddr (in network format)
  * to be used with inet_ntop
@@ -29,7 +29,7 @@ void
 
 /* Connect to address host (IP or DNS name), port serv, return socket fd */
 int
-connect(const char *host, const char *serv, int proto)
+myconnect(const char *host, const char *serv, int proto)
 {
 	int				sockfd, n;
 	struct addrinfo	hints, *res, *ressave;

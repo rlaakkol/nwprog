@@ -15,7 +15,7 @@ restype_to_int(http_response *res)
 
 /* Generate a HTTP request struct in req */
 void
-generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, int close, const char *content_type, http_request *req)
+generate_request(request_type type, const char *uri, const char *host, const char *iam, const char *payload_filename, const char *post_name, const char *post_type, int close, const char *content_type, http_request *req)
 {
 	struct stat 	file_info;
 
@@ -32,7 +32,7 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 	strncat(req->iam, iam, MAX_FIELDLEN-1);
 	req->close = close;
 	req->content_type[0] = '\0';
-	if (req->type == PUT && req->content_type != NULL) {
+	if ((req->type == PUT || req->type == POST) && req->content_type != NULL) {
 		strncat(req->content_type, content_type, MAX_FIELDLEN-1);
 	}
 
@@ -40,6 +40,9 @@ generate_request(request_type type, const char *uri, const char *host, const cha
 		/* If there is payload in the request, count the size */
 		stat(payload_filename, &file_info);
 		req->payload_len = (unsigned long) file_info.st_size;
+	} else if (type == POST) {
+		snprintf(req->post_payload, MAX_FIELDLEN, POSTQFMT, post_name, post_type);
+		req->payload_len = (unsigned long) strlen(req->post_payload);
 	} else {
 		req->payload_len = 0;
 	}
@@ -175,12 +178,14 @@ send_request(int fd, http_request *req, FILE *payload)
 
 	fprintf(stdout, "Sending request\n");
 
-	rtype = malloc(4);
+	rtype = malloc(5);
 
 	if (req->type == GET) {
 		strncpy(rtype, "GET", 4);
-	} else {
+	} else if (req->type == PUT) {
 		strncpy(rtype, "PUT", 4);
+	} else {
+		strncpy(rtype, "POST", 5);
 	}
 	header[0] = '\0';
 
@@ -205,9 +210,16 @@ send_request(int fd, http_request *req, FILE *payload)
 	writen(fd, header, strlen(header));
 	if (req->payload_len > 0) {
 		/* If there is payload, write it too */
-		if (write_file(fd, payload, req->payload_len) > 0) {
-			fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
-			return EXIT_FAILURE;
+		if (req->type == GET) {
+			if (write_file(fd, payload, req->payload_len) > 0) {
+				fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
+				return EXIT_FAILURE;
+			}
+		} else {
+			if (writen(fd, req->post_payload, req->payload_len) < (ssize_t) req->payload_len) {
+				fprintf(stderr, "Error sending message payload: %s\n", strerror(errno));
+				return EXIT_FAILURE;
+			}
 		}
 	}
 
